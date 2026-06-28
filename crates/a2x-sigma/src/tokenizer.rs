@@ -43,6 +43,11 @@ pub fn lex(input: &str) -> Result<Vec<Token>, LexError> {
     let chars: Vec<char> = input.chars().collect();
     let mut i = 0;
 
+    // State for disambiguating ⟧ (U+27E7):
+    //   ⟧ as boundary close — outside the instruction body
+    //   ⟧ as ContextOp::Resolved — inside the instruction body (between ⟬ and ⟭)
+    let mut inner_open = false;
+
     while i < chars.len() {
         let c = chars[i];
 
@@ -64,13 +69,35 @@ pub fn lex(input: &str) -> Result<Vec<Token>, LexError> {
                 }
             }
 
-            // Boundary markers (both open markers map to Boundary(Open))
-            '⟦' | '⟬' => {
+            // Outer boundary open: ⟦  (U+27E6)
+            '⟦' => {
                 i += 1;
                 Token::Boundary(BoundaryKind::Open)
             }
-            '⟧' | '⟭' => {
+
+            // Inner boundary open: ⟬  (U+27EC) — starts instruction body
+            '⟬' => {
                 i += 1;
+                inner_open = true;
+                Token::Boundary(BoundaryKind::Open)
+            }
+
+            // ⟧ (U+27E7): overloaded — boundary close OR ContextOp::Resolved
+            '⟧' => {
+                i += 1;
+                if inner_open {
+                    // Inside instruction body → ContextOp::Resolved
+                    Token::ContextOp(ContextOp::Resolved)
+                } else {
+                    // Outside instruction body → boundary close
+                    Token::Boundary(BoundaryKind::Close)
+                }
+            }
+
+            // Inner boundary close: ⟭  (U+27ED) — ends instruction
+            '⟭' => {
+                i += 1;
+                inner_open = false;
                 Token::Boundary(BoundaryKind::Close)
             }
 
@@ -249,6 +276,35 @@ mod tests {
         assert_eq!(tokens[1], Token::ProtocolId);
         assert_eq!(tokens[2], Token::Boundary(BoundaryKind::Close));
         assert_eq!(tokens[3], Token::Boundary(BoundaryKind::Open));
+    }
+
+    #[test]
+    fn test_lex_resolved_inside_packet_body() {
+        // ⟧ inside the instruction body (between ⟬ and ⟭) must be ContextOp::Resolved
+        let input = "⟦Σ∞⟧⟬C:⟧⟭";
+        let tokens = lex(input).unwrap();
+        // Expected: Open, ProtocolId, Close, Open, Label("C"), Label(":"), ContextOp(Resolved), Close
+        assert_eq!(tokens[0], Token::Boundary(BoundaryKind::Open));
+        assert_eq!(tokens[1], Token::ProtocolId);
+        assert_eq!(tokens[2], Token::Boundary(BoundaryKind::Close));
+        assert_eq!(tokens[3], Token::Boundary(BoundaryKind::Open));
+        assert_eq!(tokens[4], Token::Label("C".into()));
+        assert_eq!(tokens[5], Token::Label(":".into()));
+        assert_eq!(tokens[6], Token::ContextOp(ContextOp::Resolved));
+        assert_eq!(tokens[7], Token::Boundary(BoundaryKind::Close));
+    }
+
+    #[test]
+    fn test_lex_resolved_only_in_body() {
+        // ⟧ as the only content in the body
+        let input = "⟦Σ∞⟧⟬⟧⟭";
+        let tokens = lex(input).unwrap();
+        assert_eq!(tokens[0], Token::Boundary(BoundaryKind::Open));
+        assert_eq!(tokens[1], Token::ProtocolId);
+        assert_eq!(tokens[2], Token::Boundary(BoundaryKind::Close));
+        assert_eq!(tokens[3], Token::Boundary(BoundaryKind::Open));
+        assert_eq!(tokens[4], Token::ContextOp(ContextOp::Resolved));
+        assert_eq!(tokens[5], Token::Boundary(BoundaryKind::Close));
     }
 
     #[test]

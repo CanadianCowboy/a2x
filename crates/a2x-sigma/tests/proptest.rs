@@ -39,10 +39,8 @@ fn intent_op_strategy() -> impl Strategy<Value = IntentOp> {
 }
 
 fn context_op_strategy() -> impl Strategy<Value = ContextOp> {
-    // NOTE: Resolved (⟧) is excluded because U+27E7 is overloaded — it is
-    // both the closing boundary marker AND the Resolved operator. The tokenizer
-    // always matches ⟧ as Boundary(Close) first, so Resolved cannot survive a
-    // lex→parse roundtrip. This ambiguity should be resolved in Phase 1.
+    // All 10 context operators are now roundtrip-safe.
+    // ⟧ (Resolved) is disambiguated by the tokenizer using inner_open state.
     prop_oneof![
         Just(ContextOp::Null),
         Just(ContextOp::Universal),
@@ -53,6 +51,7 @@ fn context_op_strategy() -> impl Strategy<Value = ContextOp> {
         Just(ContextOp::TemporalChain),
         Just(ContextOp::Probabilistic),
         Just(ContextOp::Conflict),
+        Just(ContextOp::Resolved),
     ]
 }
 
