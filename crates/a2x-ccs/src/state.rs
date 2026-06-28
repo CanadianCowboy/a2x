@@ -13,10 +13,10 @@ pub struct StateRegion {
     pub len: usize,
 }
 
-/// Vec<f32>-backed implementation of the StateField trait.
+/// `Vec<f32>`-backed implementation of the StateField trait.
 ///
 /// The StateField is the agent's high-dimensional working memory — analogous
-/// to CPU registers + stack. It holds named regions backed by a flat Vec<f32>.
+/// to CPU registers + stack. It holds named regions backed by a flat `Vec<f32>`.
 ///
 /// Default total size: 1024 f32 values.
 pub struct FlatStateField {
@@ -126,12 +126,12 @@ impl StateField for FlatStateField {
 /// Default regions per plans/03-ccs-vm.md §5:
 /// | Region | Offset | Shape | Purpose |
 /// |--------|--------|-------|---------|
-/// | goal | 0 | [64] | Current goal embedding |
-/// | belief | 64 | [256] | Current belief state |
-/// | uncertainty | 320 | [64] | Uncertainty estimates |
-/// | attention | 384 | [128] | Attention focus |
-/// | temporal | 512 | [64] | Temporal context |
-/// | scratch | 576 | [448] | General-purpose working memory |
+/// | goal | 0 | `[64]` | Current goal embedding |
+/// | belief | 64 | `[256]` | Current belief state |
+/// | uncertainty | 320 | `[64]` | Uncertainty estimates |
+/// | attention | 384 | `[128]` | Attention focus |
+/// | temporal | 512 | `[64]` | Temporal context |
+/// | scratch | 576 | `[448]` | General-purpose working memory |
 pub fn init_default_regions(state: &mut dyn StateField) -> Result<(), CoreError> {
     state.define_region("goal", 0, 64)?;
     state.define_region("belief", 64, 256)?;
