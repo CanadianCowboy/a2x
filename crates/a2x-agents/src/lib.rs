@@ -1,18 +1,18 @@
-// a2x-agents — Built-in agent implementations
-// See plans/05-agents.md
+// a2x-agents — Built-in A2X agent implementations
 //
-// Stub crate — to be implemented in Phase 1.
+// See plans/05-agents.md for the full design specification.
+//
+// Agent types: Orchestrator, CLI agent, LLM agent, CCS agent.
 
-pub fn stub() -> &'static str {
-    "a2x-agents stub"
-}
+pub mod ccs_agent;
+pub mod cli_agent;
+pub mod lifecycle;
+pub mod llm_agent;
+pub mod orchestrator;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        assert_eq!(stub(), "a2x-agents stub");
-    }
-}
+// Re-exports
+pub use ccs_agent::CcsAgent;
+pub use cli_agent::{CliAgent, SandboxMode};
+pub use lifecycle::{AgentLifecycle, AgentState};
+pub use llm_agent::LlmAgent;
+pub use orchestrator::Orchestrator;
