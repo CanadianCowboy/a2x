@@ -1,0 +1,27 @@
+[package]
+name = "a2x-sigma-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.a2x-sigma]
+path = ".."
+
+# Prevent this from being compiled when running tests/clippy on the workspace
+[[bin]]
+name = "tokenizer_never_panics"
+path = "fuzz_targets/tokenizer_never_panics.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "parser_never_panics"
+path = "fuzz_targets/parser_never_panics.rs"
+test = false
+doc = false

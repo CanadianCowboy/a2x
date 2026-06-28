@@ -1,4 +1,6 @@
 // See plans/03-ccs-vm.md §3-4 (CcsVm, execution loop)
+//
+// Phase 1: Added tracing instrumentation — logs Σ∞ packets as structured events.
 
 use std::time::Duration;
 
@@ -8,6 +10,7 @@ use a2x_core::memory::{MemoryEntry, MemoryTrace};
 use a2x_core::opcode::Opcode;
 use a2x_core::state::StateField;
 use a2x_sigma::program::SigmaProgram;
+use tracing::{debug, info, trace, warn};
 
 use crate::error::VmError;
 use crate::memory::VecMemoryTrace;
@@ -15,6 +18,16 @@ use crate::operators::{bind, ground, plan, reflect};
 use crate::safety::{SafetyConstraints, SafetyLevel};
 use crate::state::{init_default_regions, FlatStateField};
 use crate::world_graph::PetgraphWorldGraph;
+
+/// Log a Σ∞ packet as a structured tracing event.
+fn trace_packet(ip: usize, opcode: Opcode, packet_text: &str) {
+    trace!(
+        ip = ip,
+        opcode = ?opcode,
+        packet = %packet_text,
+        "Σ∞ execute"
+    );
+}
 
 /// VM execution status.
 #[derive(Clone, Debug, PartialEq)]
@@ -149,11 +162,25 @@ impl CcsVm {
         // 1. FETCH + DECODE (all data extracted, borrow released)
         let decoded = match self.fetch_and_decode() {
             Ok(d) => d,
-            Err(VmError::InvalidInstructionPointer { .. }) => return Ok(VmStatus::Halted),
-            Err(e) => return Err(e),
+            Err(VmError::InvalidInstructionPointer { .. }) => {
+                debug!("VM halted — IP past end of program");
+                return Ok(VmStatus::Halted);
+            }
+            Err(e) => {
+                warn!(error = %e, "VM fetch/decode error");
+                return Err(e);
+            }
         };
 
         let old_ip = self.ip;
+        let program = self.program.as_ref();
+
+        // Trace the Σ∞ packet being executed
+        if let Some(prog) = program {
+            if let Some(inst) = prog.instructions.get(old_ip) {
+                trace_packet(old_ip, decoded.opcode, &inst.to_string());
+            }
+        }
 
         // 2. SAFETY CHECK
         self.safety
@@ -165,6 +192,7 @@ impl CcsVm {
         match decoded.opcode {
             Opcode::Nop => {}
             Opcode::Bind => {
+                debug!("BIND operator");
                 let concept = bind::bind(&[]).unwrap_or(ConceptVector::zeros(1));
                 self.world_graph
                     .allocate(concept)
@@ -175,6 +203,7 @@ impl CcsVm {
             }
             Opcode::Differentiate => {}
             Opcode::Ground => {
+                debug!("GRND operator");
                 let concept = ground::ground(&[], &a2x_core::modality::Modality::Text);
                 self.world_graph
                     .allocate(concept)
@@ -184,6 +213,7 @@ impl CcsVm {
                     .map_err(VmError::SafetyViolation)?;
             }
             Opcode::Evolve => {
+                debug!("EVOL operator");
                 crate::operators::evolve::evolve(
                     &mut self.world_graph,
                     &mut self.state_field,
@@ -192,18 +222,22 @@ impl CcsVm {
                 .map_err(|e| VmError::Other(e.to_string()))?;
             }
             Opcode::Reflect => {
+                debug!("REFL operator");
                 let _update = reflect::reflect(self.memory_trace.len());
             }
             Opcode::Plan => {
+                debug!("PLAN operator");
                 let _actions = plan::plan();
             }
             Opcode::Actuate => {
+                debug!("ACT operator");
                 let _cmd = crate::operators::actuate::actuate();
                 self.safety
                     .record_side_effect()
                     .map_err(VmError::SafetyViolation)?;
             }
             Opcode::Jump => {
+                debug!("JMP operator");
                 let target = decoded
                     .jump_label
                     .as_deref()
@@ -212,6 +246,7 @@ impl CcsVm {
                 return Ok(VmStatus::Running);
             }
             Opcode::Branch => {
+                debug!("BR operator");
                 let target = decoded
                     .jump_label
                     .as_deref()
@@ -220,6 +255,7 @@ impl CcsVm {
                 return Ok(VmStatus::Running);
             }
             Opcode::Call => {
+                debug!("CALL operator");
                 let target = decoded
                     .jump_label
                     .as_deref()
@@ -228,12 +264,16 @@ impl CcsVm {
                 return Ok(VmStatus::Running);
             }
             Opcode::Return => {
+                debug!("RET operator");
                 self.control_return()?;
                 return Ok(VmStatus::Running);
             }
             Opcode::Fork => {}
             Opcode::Merge => {}
-            Opcode::Halt => return Ok(VmStatus::Halted),
+            Opcode::Halt => {
+                info!("VM halted normally");
+                return Ok(VmStatus::Halted);
+            }
             Opcode::Custom(_) => {}
         }
 

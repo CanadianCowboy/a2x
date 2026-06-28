@@ -19,3 +19,5 @@ a2x-bus = { path = "../a2x-bus" }
 a2x-agents = { path = "../a2x-agents" }
 clap = { workspace = true }
 anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

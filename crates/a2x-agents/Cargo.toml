@@ -13,6 +13,7 @@ a2x-core = { path = "../a2x-core" }
 a2x-sigma = { path = "../a2x-sigma" }
 a2x-bus = { path = "../a2x-bus" }
 a2x-ccs = { path = "../a2x-ccs" }
+tracing = { workspace = true }
 
 [lib]
 name = "a2x_agents"

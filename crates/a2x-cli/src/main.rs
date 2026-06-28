@@ -111,6 +111,15 @@ enum Command {
 // ---------------------------------------------------------------------------
 
 fn main() -> Result<()> {
+    // Initialize tracing subscriber for structured Σ∞ packet event logging.
+    // Uses env-filter format: RUST_LOG=info,a2x_ccs=debug,a2x_ccs::vm=trace
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
+        .init();
+
     let cli = Cli::parse();
 
     match cli.command {

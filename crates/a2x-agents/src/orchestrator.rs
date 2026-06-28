@@ -104,11 +104,32 @@ impl Agent for Orchestrator {
         AgentType::Orchestrator
     }
 
-    fn execute(&self, _program: Packet) -> Result<Packet, AgentError> {
-        // Phase 0: accept raw packet, run empty program, return raw result
-        let prog = SigmaProgram::new();
-        let _result = self.dispatch(prog)?;
-        Ok(Packet::Raw(vec![]))
+    fn execute(&self, program: Packet) -> Result<Packet, AgentError> {
+        // Phase 1: parse raw packet bytes as Sigma text, dispatch to VM, return result
+        match program {
+            Packet::Raw(bytes) => {
+                let text = String::from_utf8(bytes).map_err(|e| {
+                    AgentError::ProgramCrash {
+                        program_id: ProgramId::zero(),
+                        reason: format!("invalid UTF-8 in packet: {}", e),
+                    }
+                })?;
+                let sigma_prog = a2x_sigma::parse_program(&text).map_err(|e| {
+                    AgentError::ProgramCrash {
+                        program_id: ProgramId::zero(),
+                        reason: format!("parse error: {}", e),
+                    }
+                })?;
+                let result = self.dispatch(sigma_prog)?;
+                let output_text = result
+                    .instructions
+                    .iter()
+                    .map(|p| p.to_string())
+                    .collect::<Vec<_>>()
+                    .join("");
+                Ok(Packet::Raw(output_text.into_bytes()))
+            }
+        }
     }
 
     fn state_summary(&self) -> Option<StateSnapshot> {
