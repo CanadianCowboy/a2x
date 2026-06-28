@@ -287,6 +287,40 @@ impl WorldGraph for PetgraphWorldGraph {
         Ok(self.label_index.get(label).copied())
     }
 
+    fn set_label(&mut self, id: NodeId, label: &str) -> Result<(), CoreError> {
+        let ni = self
+            .node_index(id)
+            .ok_or(CoreError::InvalidNodeId(id.as_u64()))?;
+
+        // If a different node already holds this label, conflict.
+        if let Some(existing) = self.label_index.get(label) {
+            if *existing != id {
+                return Err(CoreError::Other(
+                    format!(
+                        "label '{}' is already attached to node {}",
+                        label,
+                        existing.as_u64()
+                    )
+                    .into(),
+                ));
+            }
+            // Same id, same label — idempotent.
+            return Ok(());
+        }
+
+        // Drop any previous label this node carried (it's leaving the index).
+        if let Some(old) = self.graph.node_weight(ni).and_then(|p| p.label.clone()) {
+            self.label_index.remove(&old);
+        }
+
+        if let Some(payload) = self.graph.node_weight_mut(ni) {
+            payload.label = Some(label.to_string());
+        }
+        self.label_index.insert(label.to_string(), id);
+
+        Ok(())
+    }
+
     fn neighbors(&self, id: NodeId) -> Result<Vec<NodeId>, CoreError> {
         let ni = self
             .node_index(id)
@@ -428,5 +462,43 @@ mod tests {
         wg.allocate(make_concept(vec![1.0])).unwrap();
         wg.allocate(make_concept(vec![2.0])).unwrap();
         assert!(wg.allocate(make_concept(vec![3.0])).is_err());
+    }
+
+    #[test]
+    fn test_set_label() {
+        let mut wg = PetgraphWorldGraph::new();
+        let id = wg.allocate(make_concept(vec![1.0])).unwrap();
+        wg.set_label(id, "sys").unwrap();
+        assert_eq!(wg.lookup_label("sys").unwrap(), Some(id));
+        let node = wg.lookup(id).unwrap().unwrap();
+        assert_eq!(node.label.as_deref(), Some("sys"));
+    }
+
+    #[test]
+    fn test_set_label_conflict_on_different_node() {
+        let mut wg = PetgraphWorldGraph::new();
+        let a = wg.allocate(make_concept(vec![1.0])).unwrap();
+        let b = wg.allocate(make_concept(vec![2.0])).unwrap();
+        wg.set_label(a, "dup").unwrap();
+        assert!(wg.set_label(b, "dup").is_err());
+    }
+
+    #[test]
+    fn test_set_label_replaces_old_label() {
+        let mut wg = PetgraphWorldGraph::new();
+        let id = wg.allocate(make_concept(vec![1.0])).unwrap();
+        wg.set_label(id, "first").unwrap();
+        wg.set_label(id, "second").unwrap();
+        assert_eq!(wg.lookup_label("first").unwrap(), None);
+        assert_eq!(wg.lookup_label("second").unwrap(), Some(id));
+    }
+
+    #[test]
+    fn test_set_label_idempotent() {
+        let mut wg = PetgraphWorldGraph::new();
+        let id = wg.allocate(make_concept(vec![1.0])).unwrap();
+        wg.set_label(id, "x").unwrap();
+        wg.set_label(id, "x").unwrap(); // idempotent
+        assert_eq!(wg.lookup_label("x").unwrap(), Some(id));
     }
 }

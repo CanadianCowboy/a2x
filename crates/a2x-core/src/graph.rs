@@ -110,6 +110,11 @@ pub trait WorldGraph: Send + Sync {
     /// Look up a node by its label.
     fn lookup_label(&self, label: &str) -> Result<Option<NodeId>, CoreError>;
 
+    /// Set or change the label of a node. If `label` is already attached to
+    /// a different node, returns an error. Setting the same label on the same
+    /// node is idempotent (no error).
+    fn set_label(&mut self, id: NodeId, label: &str) -> Result<(), CoreError>;
+
     /// Get the IDs of all neighbors of a node.
     fn neighbors(&self, id: NodeId) -> Result<Vec<NodeId>, CoreError>;
 

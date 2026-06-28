@@ -21,6 +21,9 @@ pub enum VmError {
     InvalidNode(u64),
     /// Operand references a non-existent StateField region.
     UndefinedRegion(String),
+    /// Operand references a label that does not exist in the WorldGraph.
+    /// Returned by `CcsVm` when a C-field label cannot be resolved.
+    UnresolvedOperand(String),
     /// Parallel fork results conflict and can't be merged.
     ParallelMergeConflict,
     /// Program exceeded its maximum instruction count.
@@ -48,6 +51,7 @@ impl fmt::Display for VmError {
             VmError::SafetyViolation(msg) => write!(f, "safety violation: {}", msg),
             VmError::InvalidNode(id) => write!(f, "invalid node: {}", id),
             VmError::UndefinedRegion(r) => write!(f, "undefined StateField region: {}", r),
+            VmError::UnresolvedOperand(s) => write!(f, "unresolved operand: {}", s),
             VmError::ParallelMergeConflict => write!(f, "parallel merge conflict"),
             VmError::MaxStepsExceeded { max, actual } => {
                 write!(f, "max steps {} exceeded (executed {})", max, actual)
@@ -160,5 +164,13 @@ mod tests {
     fn test_state_error_display() {
         let err = StateError::RegionNotFound("goal".into());
         assert!(format!("{}", err).contains("goal"));
+    }
+
+    #[test]
+    fn test_unresolved_operand_display() {
+        let err = VmError::UnresolvedOperand("\u{27e8}missing\u{27e9}".into());
+        let s = format!("{}", err);
+        assert!(s.contains("unresolved operand"));
+        assert!(s.contains("missing"));
     }
 }

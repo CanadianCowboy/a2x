@@ -47,6 +47,7 @@ impl Default for SafetyLevel {
                 Opcode::Nop,
                 Opcode::Bind,
                 Opcode::Differentiate,
+                Opcode::Ground,
                 Opcode::Evolve,
                 Opcode::Reflect,
                 Opcode::Plan,
@@ -55,6 +56,11 @@ impl Default for SafetyLevel {
                 Opcode::Call,
                 Opcode::Return,
                 Opcode::Halt,
+                // NOTE: `Fork` / `Merge` are intentionally NOT in the default Bounded
+                // allowlist. They are not yet plumbed in Phase 2.A (parallel execution
+                // and result merging have their own safety story: recursion depth,
+                // memory ownership across child VMs, conflict resolution on merge).
+                // Add them here once their safe-by-construction semantics land.
             ],
         }
     }
@@ -221,5 +227,28 @@ mod tests {
         assert!(safety.step().is_ok());
         assert!(safety.step().is_ok());
         assert!(safety.step().is_err()); // 4th step exceeds max
+    }
+
+    #[test]
+    fn test_default_bounded_allows_compute_ops() {
+        // Locks the default SafetyLevel::Bounded allowlist so a future edit can't
+        // accidentally drop `Ground` (or any of the other CCS compute operators)
+        // and silently break their VM-level dispatch.
+        let safety = SafetyConstraints::default();
+        for op in [
+            Opcode::Nop,
+            Opcode::Bind,
+            Opcode::Differentiate,
+            Opcode::Ground,
+            Opcode::Evolve,
+            Opcode::Reflect,
+            Opcode::Plan,
+        ] {
+            assert!(
+                safety.check_opcode(op).is_ok(),
+                "default Bounded must allow {:?}",
+                op
+            );
+        }
     }
 }
