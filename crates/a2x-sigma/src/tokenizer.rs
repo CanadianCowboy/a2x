@@ -15,9 +15,10 @@ use crate::token::{BoundaryKind, Token};
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
+/// # use a2x_sigma::lex;
 /// let tokens = lex("⟦Σ∞⟧").unwrap();
-/// assert_eq!(tokens.len(), 4);
+/// assert_eq!(tokens.len(), 3);
 /// ```
 pub fn lex(input: &str) -> Result<Vec<Token>, LexError> {
     let mut tokens = Vec::new();
