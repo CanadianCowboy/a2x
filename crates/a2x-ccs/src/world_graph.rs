@@ -321,6 +321,20 @@ impl WorldGraph for PetgraphWorldGraph {
         Ok(())
     }
 
+    fn set_provenance(&mut self, id: NodeId, provenance: &str) -> Result<(), CoreError> {
+        let ni = self
+            .node_index(id)
+            .ok_or(CoreError::InvalidNodeId(id.as_u64()))?;
+        if let Some(payload) = self.graph.node_weight_mut(ni) {
+            payload.metadata.provenance = Some(provenance.to_string());
+            Ok(())
+        } else {
+            // Defensive: weight should be present at this NodeIndex, but if a
+            // third-party implementation diverges, surface as InvalidNodeId.
+            Err(CoreError::InvalidNodeId(id.as_u64()))
+        }
+    }
+
     fn neighbors(&self, id: NodeId) -> Result<Vec<NodeId>, CoreError> {
         let ni = self
             .node_index(id)
@@ -500,5 +514,46 @@ mod tests {
         wg.set_label(id, "x").unwrap();
         wg.set_label(id, "x").unwrap(); // idempotent
         assert_eq!(wg.lookup_label("x").unwrap(), Some(id));
+    }
+
+    // === Phase 2.B: provenance ===
+
+    #[test]
+    fn test_set_provenance_basic_round_trip() {
+        let mut wg = PetgraphWorldGraph::new();
+        let id = wg.allocate(make_concept(vec![1.0])).unwrap();
+        wg.set_provenance(id, "bind(ip=2,inputs=[a,b])").unwrap();
+        let node = wg.lookup(id).unwrap().unwrap();
+        assert_eq!(
+            node.metadata.provenance.as_deref(),
+            Some("bind(ip=2,inputs=[a,b])")
+        );
+        assert_eq!(node.metadata.access_count, 0); // unchanged
+        assert!(node.metadata.last_modified.is_none()); // unchanged
+        assert!(!node.metadata.ephemeral); // unchanged
+    }
+
+    #[test]
+    fn test_set_provenance_overwrites() {
+        let mut wg = PetgraphWorldGraph::new();
+        let id = wg.allocate(make_concept(vec![1.0])).unwrap();
+        wg.set_provenance(id, "first").unwrap();
+        wg.set_provenance(id, "second").unwrap();
+        assert_eq!(
+            wg.lookup(id)
+                .unwrap()
+                .unwrap()
+                .metadata
+                .provenance
+                .as_deref(),
+            Some("second")
+        );
+    }
+
+    #[test]
+    fn test_set_provenance_unknown_id_errors() {
+        let mut wg = PetgraphWorldGraph::new();
+        let result = wg.set_provenance(NodeId::new(999), "anything");
+        assert!(matches!(result, Err(CoreError::InvalidNodeId(999))));
     }
 }

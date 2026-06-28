@@ -154,6 +154,13 @@ impl SafetyConstraints {
     }
 
     /// Record a node allocation.
+    ///
+    /// Currently a **counter-only stub**: `SafetyLevel::Bounded` has no
+    /// `max_allocations` (or per-allocation byte budget) field yet, so this
+    /// neither enforces nor reports a limit — just bumps the accounting
+    /// counter for future probe tooling. Once `Bounded` gains an allocation
+    /// budget (a Phase 2+ addition), this is where enforcement lives. The
+    /// VM's `dispatch_*` helpers invoke it for observability only today.
     pub fn record_allocation(&mut self) -> Result<(), String> {
         self.nodes_allocated += 1;
         Ok(())

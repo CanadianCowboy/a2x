@@ -58,6 +58,12 @@ pub struct NodeMetadata {
     pub last_modified: Option<std::time::SystemTime>,
     /// If true, this node may be evicted under memory pressure.
     pub ephemeral: bool,
+    /// Provenance: how this node was created. Populated post-allocation by
+    /// `WorldGraph::set_provenance`. Phase 2.B VM dispatch encodes it as
+    /// a deterministic string `"<op>(<attrs>)"`, e.g.
+    /// `"bind(ip=2,inputs=[a,b])"`. `None` for manually-allocated nodes
+    /// (e.g. test fixtures, pre-loaded world-models).
+    pub provenance: Option<String>,
 }
 
 /// A structured query against the WorldGraph.
@@ -114,6 +120,13 @@ pub trait WorldGraph: Send + Sync {
     /// a different node, returns an error. Setting the same label on the same
     /// node is idempotent (no error).
     fn set_label(&mut self, id: NodeId, label: &str) -> Result<(), CoreError>;
+
+    /// Set or overwrite the provenance string on a node, recording how the
+    /// node was created. Does not affect `access_count`, `last_modified`,
+    /// or `ephemeral` — those remain managed by the implementation.
+    /// Returns `InvalidNodeId` if `id` is not present in the graph.
+    /// Idempotent: calling twice with the same value stores it once.
+    fn set_provenance(&mut self, id: NodeId, provenance: &str) -> Result<(), CoreError>;
 
     /// Get the IDs of all neighbors of a node.
     fn neighbors(&self, id: NodeId) -> Result<Vec<NodeId>, CoreError>;
