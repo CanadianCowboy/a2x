@@ -46,7 +46,7 @@ mod tests {
     #[test]
     fn test_bind_single() {
         let c = ConceptVector::from_vec(vec![1.0, 2.0]);
-        let result = bind(&[c.clone()]).unwrap();
+        let result = bind(std::slice::from_ref(&c)).unwrap();
         assert_eq!(result.data, c.data);
     }
 

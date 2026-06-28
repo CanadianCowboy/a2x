@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc b08fedeb3eef89cc9d75b9717b93de38e339dd92afb9daaef1973997dbb526cf # shrinks to pkt = SigmaPacket { protocol: Sigma, intent: IntentField { operators: [] }, context: ContextField { operators: [Resolved], labels: [] }, plan: PlanField { operators: [] }, data: DataField { operators: [], payload: [] } }
+cc b56c3f74209b7a9724192f057862f20a551dd719291605d5046b889e61dcb1c0 # shrinks to pkt = SigmaPacket { protocol: Sigma, intent: IntentField { operators: [] }, context: ContextField { operators: [], labels: ["I"] }, plan: PlanField { operators: [] }, data: DataField { operators: [], payload: [] } }

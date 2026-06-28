@@ -20,6 +20,11 @@ blake3 = "1"
 
 [dev-dependencies]
 proptest = "1"
+criterion = { workspace = true }
+
+[[bench]]
+name = "tokenizer"
+harness = false
 
 [lib]
 name = "a2x_sigma"
