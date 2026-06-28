@@ -14,5 +14,8 @@ path = "src/main.rs"
 
 [dependencies]
 a2x-core = { path = "../a2x-core" }
+a2x-sigma = { path = "../a2x-sigma" }
 a2x-bus = { path = "../a2x-bus" }
 a2x-agents = { path = "../a2x-agents" }
+clap = { workspace = true }
+anyhow = { workspace = true }

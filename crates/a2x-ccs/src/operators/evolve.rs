@@ -43,10 +43,8 @@ impl std::error::Error for EvolveError {}
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn test_evolve_stub_ok() {
-        // Phase 0: evolve is a no-op, tested via VM integration
+        // Phase 0: evolve is a no-op, verified via VM integration
     }
 }

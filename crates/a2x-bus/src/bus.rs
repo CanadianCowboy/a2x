@@ -1,6 +1,6 @@
 // See plans/04-bus.md §1-7
 
-use crate::discovery::{AgentInfo, Discovery, InMemoryDiscovery};
+use crate::discovery::{AgentFilter, AgentInfo, Discovery, InMemoryDiscovery};
 use crate::routing::{Router, RoutingStrategy};
 use crate::transport::{InMemoryTransport, Transport, TransportError};
 use crate::wire::{MessageType, WireMessage};
@@ -94,6 +94,11 @@ impl Bus {
             .discovery
             .discover(&crate::discovery::AgentFilter::ById(id.clone()))
             .is_empty()
+    }
+
+    /// Discover agents matching a filter.
+    pub fn discover(&self, filter: &AgentFilter) -> Vec<AgentInfo> {
+        self.discovery.discover(filter)
     }
 }
 
