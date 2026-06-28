@@ -10,11 +10,13 @@ description = "A2X message bus: routing, transport, agent discovery, wire format
 
 [features]
 default = []
+serde = ["dep:serde", "a2x-core/serde", "a2x-sigma/serde"]
 tokio = ["dep:tokio"]
 
 [dependencies]
 a2x-core = { path = "../a2x-core" }
 a2x-sigma = { path = "../a2x-sigma" }
+serde = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
 
 [lib]

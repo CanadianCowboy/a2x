@@ -1,18 +1,15 @@
-// a2x-bus — Message bus, routing, transport
+// a2x-bus — Message bus, routing, transport, agent discovery
 // See plans/04-bus.md
-//
-// Stub crate — to be implemented in Phase 0.
 
-pub fn stub() -> &'static str {
-    "a2x-bus stub"
-}
+pub mod bus;
+pub mod discovery;
+pub mod routing;
+pub mod transport;
+pub mod wire;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        assert_eq!(stub(), "a2x-bus stub");
-    }
-}
+// Re-export key types
+pub use bus::{Bus, BusError};
+pub use discovery::{AgentFilter, AgentInfo, Discovery, DiscoveryError, InMemoryDiscovery};
+pub use routing::{Router, RoutingStrategy};
+pub use transport::{InMemoryTransport, Transport, TransportError};
+pub use wire::{MessageType, WireError, WireMessage, WIRE_VERSION};
