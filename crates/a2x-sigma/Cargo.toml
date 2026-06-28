@@ -1,0 +1,25 @@
+[package]
+name = "a2x-sigma"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Σ∞ symbollic programming language: tokenizer, parser, operator tables, SigmaPacket"
+
+[features]
+default = ["std"]
+std = []
+serde = ["dep:serde", "a2x-core/serde"]
+
+[dependencies]
+a2x-core = { path = "../a2x-core" }
+serde = { workspace = true, optional = true }
+
+[dev-dependencies]
+proptest = "1"
+
+[lib]
+name = "a2x_sigma"
+path = "src/lib.rs"

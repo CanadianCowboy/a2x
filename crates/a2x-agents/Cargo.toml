@@ -1,0 +1,19 @@
+[package]
+name = "a2x-agents"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "A2X built-in agents: Orchestrator, CLI agent, LLM agent, CCS agent, lifecycle"
+
+[dependencies]
+a2x-core = { path = "../a2x-core" }
+a2x-sigma = { path = "../a2x-sigma" }
+a2x-bus = { path = "../a2x-bus" }
+a2x-ccs = { path = "../a2x-ccs" }
+
+[lib]
+name = "a2x_agents"
+path = "src/lib.rs"

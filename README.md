@@ -22,6 +22,7 @@ This project is built **interactively**. The user (Josh) wants every AI assistan
 - **No surprises** — explain what you're doing. Confirm before taking significant actions (e.g., running destructive commands, publishing, deleting files).
 - **Read files before editing** — always read the current state of a file before modifying it.
 - **Ask for clarification** — if requirements are ambiguous, do not guess. Stop and ask.
+- **Document your work** — every AI agent MUST create a work report `.md` file in `work-reports/` named `YYYY-MM-DD-description.md` before committing. This report documents what was done, what was changed, verification results, and next steps. See `work-reports/` for examples.
 
 ### Key Decisions (Settled — Do Not Revisit)
 
@@ -41,11 +42,18 @@ This project is built **interactively**. The user (Josh) wants every AI assistan
 
 - [x] PLAN.md written (30 sections + Appendices + Deep Design)
 - [x] 15 sub-plans in `plans/` covering all subsystems
-- [x] Git initialized (empty repo, no commits yet)
+- [x] Git initialized
 - [x] README.md with AI context + ColdStart Coding-Grade standard
 - [x] CONTRIBUTING.md with AI-friendly contribution guide
-- [ ] No code written yet — still in planning phase
-- [ ] **Next step:** scaffold Cargo workspace with `crates/` directories
+- [x] Cargo workspace scaffolded with all 10 crates
+- [x] `a2x-core` fully implemented (zero-dependency, 25 tests, clippy clean)
+- [x] All 9 remaining crates scaffolded as stubs
+- [ ] **Next:** implement `a2x-sigma` (tokenizer, parser, operator tables, SigmaPacket)
+
+### Work Reports
+
+Every AI agent must create a work report file in `work-reports/`. See:
+- [2026-06-28 — Phase 0 Scaffold](work-reports/2026-06-28-phase0-scaffold.md)
 
 ### If You Are Starting Fresh
 
@@ -57,6 +65,7 @@ If you have no session history (e.g., this is your first interaction), here is w
 4. **No code exists yet.** The first code to write is `a2x-core` (Phase 0 of the roadmap).
 5. **Use the tools available.** You can spawn AI sub-agents (file-picker, code-searcher, basher, researcher-web, etc.) to help with complex tasks.
 6. **ColdStart Coding-Grade applies.** Every piece of code must meet the 7-category checklist at the bottom of this file.
+7. **Work reports are required.** Before committing, create a `work-reports/YYYY-MM-DD-description.md` file documenting your changes.
 
 ---
 
@@ -98,6 +107,8 @@ A2X is a **three-layer programming language stack** for AI agents:
 | `a2x-bus` | Message bus, routing, transport, agent discovery |
 | `a2x-ccs` | CCS VM implementation, WorldGraph, StateField, MemoryTrace |
 | `a2x-agents` | Built-in agents (Orchestrator, CLI, LLM, CCS) |
+| `a2x-gateway` | Entity gateway, protocol listeners, auth, entity registry |
+| `a2x-client` | Rust client SDK for connecting external apps to A2X |
 | `a2x-cli` | CLI binary for interacting with the system |
 | `a2x-probe` | Probe/debug tools for inspecting CCS internals (Phase 5) |
 

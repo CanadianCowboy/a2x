@@ -1,0 +1,22 @@
+[package]
+name = "a2x-bus"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "A2X message bus: routing, transport, agent discovery, wire format"
+
+[features]
+default = []
+tokio = ["dep:tokio"]
+
+[dependencies]
+a2x-core = { path = "../a2x-core" }
+a2x-sigma = { path = "../a2x-sigma" }
+tokio = { workspace = true, optional = true }
+
+[lib]
+name = "a2x_bus"
+path = "src/lib.rs"

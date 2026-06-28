@@ -1,0 +1,18 @@
+[package]
+name = "a2x-gateway"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "A2X entity gateway: protocol listeners, auth, entity registry, webhooks"
+
+[dependencies]
+a2x-core = { path = "../a2x-core" }
+a2x-sigma = { path = "../a2x-sigma" }
+a2x-bus = { path = "../a2x-bus" }
+
+[lib]
+name = "a2x_gateway"
+path = "src/lib.rs"

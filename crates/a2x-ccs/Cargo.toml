@@ -1,0 +1,22 @@
+[package]
+name = "a2x-ccs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "CCS cognitive runtime VM: WorldGraph, StateField, MemoryTrace, execution loop"
+
+[features]
+default = []
+ndarray = ["dep:ndarray"]
+
+[dependencies]
+a2x-core = { path = "../a2x-core" }
+petgraph = { workspace = true }
+ndarray = { workspace = true, optional = true }
+
+[lib]
+name = "a2x_ccs"
+path = "src/lib.rs"

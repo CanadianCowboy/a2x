@@ -2,17 +2,15 @@
 resolver = "2"
 members = [
     "crates/a2x-core",
-    # Phase 0 crates (to be added):
-    # "crates/a2x-sigma",
-    # "crates/a2x-omega",
-    # "crates/a2x-bus",
-    # "crates/a2x-ccs",
-    # Phase 1+ crates:
-    # "crates/a2x-agents",
-    # "crates/a2x-gateway",
-    # "crates/a2x-client",
-    # "crates/a2x-cli",
-    # "crates/a2x-probe",
+    "crates/a2x-sigma",
+    "crates/a2x-omega",
+    "crates/a2x-bus",
+    "crates/a2x-ccs",
+    "crates/a2x-agents",
+    "crates/a2x-gateway",
+    "crates/a2x-client",
+    "crates/a2x-cli",
+    "crates/a2x-probe",
 ]
 
 [workspace.package]
@@ -26,12 +24,11 @@ description = "A2X — Agent-to-Anything: an AI-native programming language + ru
 
 [workspace.dependencies]
 # External dependencies (centralized for workspace-wide consistency)
-# Zero-dependency crates:
 serde = { version = "1", features = ["derive"] }
+petgraph = "0.7"
+ndarray = "0.16"
+tokio = { version = "1", features = ["full"] }
 # Future (uncomment as needed):
-# ndarray = { version = "0.16", optional = true }
-# petgraph = "0.7"
-# tokio = { version = "1", features = ["full"] }
 # clap = { version = "4", features = ["derive"] }
 # tracing = "0.1"
 # thiserror = "2"

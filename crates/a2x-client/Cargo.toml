@@ -1,0 +1,16 @@
+[package]
+name = "a2x-client"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "A2X Rust client SDK for connecting external apps to A2X"
+
+[dependencies]
+a2x-core = { path = "../a2x-core" }
+
+[lib]
+name = "a2x_client"
+path = "src/lib.rs"

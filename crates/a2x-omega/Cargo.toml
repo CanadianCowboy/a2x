@@ -1,0 +1,21 @@
+[package]
+name = "a2x-omega"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Ω compiled latent representation: tensor packets, compiler pipeline, encoder/decoder"
+
+[features]
+default = []
+ndarray = ["dep:ndarray"]
+
+[dependencies]
+a2x-core = { path = "../a2x-core" }
+ndarray = { workspace = true, optional = true }
+
+[lib]
+name = "a2x_omega"
+path = "src/lib.rs"

@@ -1,0 +1,18 @@
+[package]
+name = "a2x-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "A2X CLI binary for interacting with the system"
+
+[[bin]]
+name = "a2x"
+path = "src/main.rs"
+
+[dependencies]
+a2x-core = { path = "../a2x-core" }
+a2x-bus = { path = "../a2x-bus" }
+a2x-agents = { path = "../a2x-agents" }
