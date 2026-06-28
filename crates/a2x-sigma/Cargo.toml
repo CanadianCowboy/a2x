@@ -16,6 +16,7 @@ serde = ["dep:serde", "a2x-core/serde"]
 [dependencies]
 a2x-core = { path = "../a2x-core" }
 serde = { workspace = true, optional = true }
+blake3 = "1"
 
 [dev-dependencies]
 proptest = "1"
