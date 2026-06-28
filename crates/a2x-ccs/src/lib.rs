@@ -1,18 +1,40 @@
-// a2x-ccs — CCS cognitive runtime VM
-// See plans/03-ccs-vm.md
+// a2x-ccs — CryoCore Cognitive Substrate runtime VM
 //
-// Stub crate — to be implemented in Phase 0/2.
+// See plans/03-ccs-vm.md for the full design specification.
+//
+// This crate implements:
+// - WorldGraph: petgraph-backed persistent graph memory (heap)
+// - StateField: Vec<f32>-backed working memory (registers)
+// - MemoryTrace: vec-backed execution history
+// - PolicyField: stub policy (Phase 0)
+// - CcsVm: fetch-decode-execute loop with control flow
+// - SafetyConstraints: opcode allowlisting, bounds checking
+// - Operators: bind, differentiate, ground, evolve, reflect, plan, actuate (stubs)
+// - Probe: debug/inspection interface stubs
 
-pub fn stub() -> &'static str {
-    "a2x-ccs stub"
-}
+// Public modules
+pub mod error;
+pub mod memory;
+pub mod operators;
+pub mod policy;
+pub mod probe;
+pub mod safety;
+pub mod state;
+pub mod vm;
+pub mod world_graph;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        assert_eq!(stub(), "a2x-ccs stub");
-    }
-}
+// Re-export commonly used types at crate root
+pub use error::{StateError, VmError, WorldGraphError};
+pub use memory::VecMemoryTrace;
+pub use operators::actuate::ExternalCommand;
+pub use operators::bind::bind;
+pub use operators::differentiate::differentiate;
+pub use operators::ground::ground;
+pub use operators::plan::{plan, Action};
+pub use operators::reflect::{reflect, PolicyUpdate};
+pub use policy::StubPolicy;
+pub use probe::{ProbeQuery, ProbeSnapshot, ProbeTraceEntry};
+pub use safety::{SafetyClassification, SafetyConstraints, SafetyLevel};
+pub use state::{init_default_regions, FlatStateField, StateRegion};
+pub use vm::{CcsVm, VmLimits, VmStatus};
+pub use world_graph::PetgraphWorldGraph;
