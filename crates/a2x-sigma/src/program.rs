@@ -136,6 +136,21 @@ impl SigmaProgram {
         self.id = ProgramId::new(*hash.as_bytes());
         self.id
     }
+
+    /// Extract the output of this program from the last instruction's D field.
+    ///
+    /// Returns a new SigmaProgram containing only the data field from the
+    /// final instruction, representing the program result. Returns an empty
+    /// program if there are no instructions.
+    pub fn output(&self) -> SigmaProgram {
+        let mut result = SigmaProgram::new();
+        if let Some(last) = self.instructions.last() {
+            let mut output_packet = SigmaPacket::new();
+            output_packet.data = last.data.clone();
+            result.push(output_packet);
+        }
+        result
+    }
 }
 
 impl Default for SigmaProgram {

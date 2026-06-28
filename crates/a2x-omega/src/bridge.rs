@@ -2,6 +2,7 @@
 
 use crate::compiler::CompileToOmega;
 use crate::decoder::DecompileToSigma;
+use crate::error::CompileError;
 use crate::passes::OptimizationLevel;
 use a2x_sigma::SigmaPacket;
 use a2x_sigma::SigmaProgram;
@@ -19,14 +20,14 @@ impl Bridge {
     pub fn compile(
         program: &SigmaProgram,
         level: OptimizationLevel,
-    ) -> Result<crate::program::OmegaProgram<29796>, crate::compiler::CompileError> {
+    ) -> Result<crate::program::OmegaProgram<29796>, CompileError> {
         program.compile(level)
     }
 
     /// Decompile an Ω packet back to Σ∞.
     ///
     /// Returns None if decompilation fails (Phase 0: always fails, stub).
-    pub fn decompile(packet: &crate::packet::OmegaPacket) -> Option<SigmaPacket> {
+    pub fn decompile(packet: &crate::packet::OmegaPacket<29796>) -> Option<SigmaPacket> {
         SigmaPacket::decompile(packet).ok()
     }
 }

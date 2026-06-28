@@ -6,6 +6,7 @@
 pub mod bridge;
 pub mod compiler;
 pub mod decoder;
+pub mod error;
 pub mod ir;
 pub mod packet;
 pub mod passes;
@@ -13,8 +14,9 @@ pub mod program;
 
 // Re-export key types
 pub use bridge::Bridge;
-pub use compiler::{CompileError, CompileToOmega};
-pub use decoder::{DecompileError, DecompileToSigma};
+pub use compiler::CompileToOmega;
+pub use decoder::DecompileToSigma;
+pub use error::{CompileError, DecompileError};
 pub use ir::{IrGraph, IrMetadata, IrNode, IrNodeId, IrOperand};
 pub use packet::{
     OmegaPacket, OFFSET_C, OFFSET_D, OFFSET_I, OFFSET_P, SIZE_C, SIZE_D, SIZE_I, SIZE_P, TOTAL_DIM,

@@ -1,33 +1,11 @@
 // See plans/02-omega-compiler.md §5
 
+use crate::error::CompileError;
 use crate::ir::IrGraph;
 use crate::packet::{OmegaPacket, SIZE_C, SIZE_D, SIZE_I, SIZE_P};
 use crate::passes::{optimize, OptimizationLevel};
 use crate::program::OmegaProgram;
 use a2x_sigma::SigmaProgram;
-
-/// Error from the Ω compilation pipeline.
-#[derive(Clone, Debug, PartialEq)]
-pub enum CompileError {
-    /// Unsupported opcode in the compilation target.
-    UnsupportedOpcode(String),
-    /// The program is empty and cannot be compiled.
-    EmptyProgram,
-    /// IR generation failed.
-    IrError(String),
-}
-
-impl std::fmt::Display for CompileError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CompileError::UnsupportedOpcode(op) => write!(f, "unsupported opcode: {}", op),
-            CompileError::EmptyProgram => write!(f, "cannot compile empty program"),
-            CompileError::IrError(msg) => write!(f, "IR error: {}", msg),
-        }
-    }
-}
-
-impl std::error::Error for CompileError {}
 
 /// Trait for compiling a Σ∞ program into Ω latent tensors.
 ///

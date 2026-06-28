@@ -2,29 +2,10 @@
 
 use crate::context::ContextOp;
 use crate::data::DataOp;
+use crate::error::LexError;
 use crate::intent::IntentOp;
 use crate::plan::PlanOp;
 use crate::token::{BoundaryKind, Token};
-
-/// Error from the lexer/tokenizer.
-#[derive(Clone, Debug, PartialEq)]
-pub enum LexError {
-    /// Unrecognized character in input.
-    UnknownCharacter(char),
-    /// Σ followed by something other than ∞.
-    InvalidProtocolId(char),
-}
-
-impl std::fmt::Display for LexError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            LexError::UnknownCharacter(c) => write!(f, "unknown character: '{}'", c),
-            LexError::InvalidProtocolId(c) => write!(f, "expected '∞' after 'Σ', got '{}'", c),
-        }
-    }
-}
-
-impl std::error::Error for LexError {}
 
 /// Tokenize (lex) a Σ∞ source string into a vector of tokens.
 ///

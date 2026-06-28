@@ -1,27 +1,8 @@
 // See plans/02-omega-compiler.md §5
 
+use crate::error::DecompileError;
 use crate::packet::OmegaPacket;
 use a2x_sigma::SigmaPacket;
-
-/// Error from the Ω → Σ∞ decompilation process.
-#[derive(Clone, Debug, PartialEq)]
-pub enum DecompileError {
-    /// The tensor does not match any known Σ∞ operator.
-    NoMatchingOperator,
-    /// The tensor is too small or malformed.
-    InvalidTensor(String),
-}
-
-impl std::fmt::Display for DecompileError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            DecompileError::NoMatchingOperator => write!(f, "no matching Σ∞ operator found"),
-            DecompileError::InvalidTensor(msg) => write!(f, "invalid tensor: {}", msg),
-        }
-    }
-}
-
-impl std::error::Error for DecompileError {}
 
 /// Trait for decompiling Ω tensor packets back into Σ∞ symbolic form.
 ///
