@@ -1,0 +1,26 @@
+# Rust / Cargo
+target/
+Cargo.lock
+
+# IDE / Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Obsidian
+.obsidian/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# A2X runtime data
+~/.a2x/
+
+# Temp / backup
+*.tmp
+*.bak
+*.checksum
