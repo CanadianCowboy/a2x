@@ -1,0 +1,46 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/a2x-core",
+    # Phase 0 crates (to be added):
+    # "crates/a2x-sigma",
+    # "crates/a2x-omega",
+    # "crates/a2x-bus",
+    # "crates/a2x-ccs",
+    # Phase 1+ crates:
+    # "crates/a2x-agents",
+    # "crates/a2x-gateway",
+    # "crates/a2x-client",
+    # "crates/a2x-cli",
+    # "crates/a2x-probe",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75.0"
+authors = ["A2X Contributors"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/your-org/a2x"
+description = "A2X — Agent-to-Anything: an AI-native programming language + runtime"
+
+[workspace.dependencies]
+# External dependencies (centralized for workspace-wide consistency)
+# Zero-dependency crates:
+serde = { version = "1", features = ["derive"] }
+# Future (uncomment as needed):
+# ndarray = { version = "0.16", optional = true }
+# petgraph = "0.7"
+# tokio = { version = "1", features = ["full"] }
+# clap = { version = "4", features = ["derive"] }
+# tracing = "0.1"
+# thiserror = "2"
+# anyhow = "1"
+# serde_json = "1"
+# bincode = "2"
+# blake3 = "1"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
