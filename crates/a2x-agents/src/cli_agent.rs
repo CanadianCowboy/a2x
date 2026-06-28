@@ -17,6 +17,8 @@ use a2x_core::packet::Packet;
 use a2x_core::state::StateSnapshot;
 use a2x_sigma::program::SigmaProgram;
 
+use crate::parse::{packet_to_sigma_program, sigma_program_to_packet};
+
 /// CLI agent sandboxing mode.
 #[derive(Clone, Debug, PartialEq)]
 pub enum SandboxMode {
@@ -142,34 +144,9 @@ impl Agent for CliAgent {
     }
 
     fn execute(&self, program: Packet) -> Result<Packet, AgentError> {
-        match program {
-            Packet::Raw(bytes) => {
-                // Parse raw bytes as Sigma text, execute, return result
-                let text = String::from_utf8(bytes)
-                    .map_err(|e| AgentError::ProgramCrash {
-                        program_id: a2x_core::ProgramId::zero(),
-                        reason: format!("invalid UTF-8 in packet: {}", e),
-                    })?;
-
-                let sigma_prog = a2x_sigma::parse_program(&text).map_err(|e| {
-                    AgentError::ProgramCrash {
-                        program_id: a2x_core::ProgramId::zero(),
-                        reason: format!("parse error: {}", e),
-                    }
-                })?;
-
-                let result = self.run_program(sigma_prog)?;
-
-                // Serialize the result program back as raw bytes
-                let output_text = result
-                    .instructions
-                    .iter()
-                    .map(|p| p.to_string())
-                    .collect::<Vec<_>>()
-                    .join("");
-                Ok(Packet::Raw(output_text.into_bytes()))
-            }
-        }
+        let sigma_prog = packet_to_sigma_program(program)?;
+        let result = self.run_program(sigma_prog)?;
+        Ok(sigma_program_to_packet(&result))
     }
 
     fn state_summary(&self) -> Option<StateSnapshot> {

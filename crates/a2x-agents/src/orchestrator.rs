@@ -14,6 +14,7 @@ use a2x_core::state::StateSnapshot;
 use a2x_sigma::program::SigmaProgram;
 
 use crate::lifecycle::AgentLifecycle;
+use crate::parse::{packet_to_sigma_program, sigma_program_to_packet};
 
 /// The Orchestrator agent — top-level coordinator.
 ///
@@ -105,31 +106,9 @@ impl Agent for Orchestrator {
     }
 
     fn execute(&self, program: Packet) -> Result<Packet, AgentError> {
-        // Phase 1: parse raw packet bytes as Sigma text, dispatch to VM, return result
-        match program {
-            Packet::Raw(bytes) => {
-                let text = String::from_utf8(bytes).map_err(|e| {
-                    AgentError::ProgramCrash {
-                        program_id: ProgramId::zero(),
-                        reason: format!("invalid UTF-8 in packet: {}", e),
-                    }
-                })?;
-                let sigma_prog = a2x_sigma::parse_program(&text).map_err(|e| {
-                    AgentError::ProgramCrash {
-                        program_id: ProgramId::zero(),
-                        reason: format!("parse error: {}", e),
-                    }
-                })?;
-                let result = self.dispatch(sigma_prog)?;
-                let output_text = result
-                    .instructions
-                    .iter()
-                    .map(|p| p.to_string())
-                    .collect::<Vec<_>>()
-                    .join("");
-                Ok(Packet::Raw(output_text.into_bytes()))
-            }
-        }
+        let sigma_prog = packet_to_sigma_program(program)?;
+        let result = self.dispatch(sigma_prog)?;
+        Ok(sigma_program_to_packet(&result))
     }
 
     fn state_summary(&self) -> Option<StateSnapshot> {

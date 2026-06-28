@@ -9,6 +9,7 @@ pub mod cli_agent;
 pub mod lifecycle;
 pub mod llm_agent;
 pub mod orchestrator;
+pub mod parse;
 
 // Re-exports
 pub use ccs_agent::CcsAgent;
