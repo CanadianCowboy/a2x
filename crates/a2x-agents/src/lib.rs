@@ -17,3 +17,4 @@ pub use cli_agent::{CliAgent, SandboxMode};
 pub use lifecycle::{AgentLifecycle, AgentState};
 pub use llm_agent::LlmAgent;
 pub use orchestrator::Orchestrator;
+pub use parse::{packet_to_sigma_program, sigma_program_to_packet};
