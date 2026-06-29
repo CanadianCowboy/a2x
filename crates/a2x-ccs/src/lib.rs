@@ -20,6 +20,8 @@ pub mod policy;
 pub mod probe;
 pub mod safety;
 pub mod state;
+#[cfg(feature = "ndarray")]
+pub mod state_ndarray;
 pub mod vm;
 pub mod world_graph;
 
@@ -36,5 +38,7 @@ pub use policy::StubPolicy;
 pub use probe::{ProbeQuery, ProbeSnapshot, ProbeTraceEntry};
 pub use safety::{SafetyClassification, SafetyConstraints, SafetyLevel};
 pub use state::{init_default_regions, FlatStateField, StateRegion};
+#[cfg(feature = "ndarray")]
+pub use state_ndarray::{init_ndarray_default_regions, NdArrayStateField};
 pub use vm::{CcsVm, VmLimits, VmStatus};
 pub use world_graph::PetgraphWorldGraph;
