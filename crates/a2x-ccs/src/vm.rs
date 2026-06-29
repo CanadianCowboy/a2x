@@ -17,6 +17,9 @@ use tracing::{debug, info, trace, warn};
 use crate::error::VmError;
 use crate::memory::VecMemoryTrace;
 use crate::operators::{bind, differentiate, ground, plan, reflect};
+use crate::probe::{
+    BreakpointType, ProbeEvent, ProbeQuery, ProbeSnapshot, ProbeTraceEntry, TracerMode,
+};
 use crate::safety::{SafetyConstraints, SafetyLevel};
 use crate::state::{init_default_regions, FlatStateField};
 use crate::world_graph::PetgraphWorldGraph;
@@ -85,6 +88,22 @@ pub struct CcsVm {
     /// Phase 2.E: actions emitted by the most recent plan operator. Sorted
     /// descending by priority — drain from index 0 forward for execution.
     pub last_plan_actions: Vec<crate::operators::plan::Action>,
+    // ── Phase 5: Probe channel ────────────────────────────────────────
+    /// Probe receiver — checked between each instruction. If a message
+    /// is waiting, it's processed BEFORE the next instruction executes.
+    probe_rx: Option<std::sync::mpsc::Receiver<ProbeQuery>>,
+    /// Probe event sender — fires BreakpointHit/Stepped/Halted events.
+    probe_event_tx: Option<std::sync::mpsc::Sender<ProbeEvent>>,
+    /// Breakpoints keyed by instruction index.
+    breakpoints: std::collections::HashMap<usize, BreakpointType>,
+    /// Watchdog: stop after this many steps (None = no limit override).
+    watchdog_steps: Option<u64>,
+    /// Tracer mode — controls what's logged between instructions.
+    tracer_mode: TracerMode,
+    /// Whether execution is paused at a breakpoint.
+    paused: bool,
+    /// Single-step mode: execute one instruction then re-pause.
+    stepping: bool,
 }
 
 /// Bundle of decoded instruction data, extracted without borrowing `self`.
@@ -119,6 +138,13 @@ impl CcsVm {
             started_at: None,
             last_reflect: None,
             last_plan_actions: Vec::new(),
+            probe_rx: None,
+            probe_event_tx: None,
+            breakpoints: std::collections::HashMap::new(),
+            watchdog_steps: None,
+            tracer_mode: TracerMode::default(),
+            paused: false,
+            stepping: false,
         }
     }
 
@@ -153,6 +179,244 @@ impl CcsVm {
         self.started_at
             .map(|t| t.elapsed())
             .unwrap_or(Duration::ZERO)
+    }
+
+    // ── Phase 5: Probe channel API ────────────────────────────────────
+
+    /// Attach a probe channel. Returns the sender half for `ProbeQuery`
+    /// messages and a receiver for `ProbeEvent` notifications.
+    pub fn attach_probe(
+        &mut self,
+    ) -> (
+        std::sync::mpsc::Sender<ProbeQuery>,
+        std::sync::mpsc::Receiver<ProbeEvent>,
+    ) {
+        let (query_tx, query_rx) = std::sync::mpsc::channel();
+        let (event_tx, event_rx) = std::sync::mpsc::channel();
+        self.probe_rx = Some(query_rx);
+        self.probe_event_tx = Some(event_tx);
+        (query_tx, event_rx)
+    }
+    /// Drain and process all pending probe queries. Called between instructions.
+    ///
+    /// Restructured to avoid borrow conflicts: each `try_recv()` call
+    /// borrows `self.probe_rx` only for the duration of the recv, then
+    /// drops the borrow before processing the query (which mutates fields).
+    fn handle_probe_queries(&mut self) -> Result<(), VmError> {
+        loop {
+            let query = match &self.probe_rx {
+                Some(rx) => rx.try_recv().ok(),
+                None => None,
+            };
+            match query {
+                Some(q) => self.process_probe_query(q)?,
+                None => break,
+            }
+        }
+        Ok(())
+    }
+
+    /// Process a single probe query. Called from `handle_probe_queries`
+    /// after the borrow on `probe_rx` has been dropped.
+    fn process_probe_query(&mut self, query: ProbeQuery) -> Result<(), VmError> {
+        match query {
+            ProbeQuery::Snapshot => {
+                // Snapshot is a query — no event emitted (tool reads response
+                // via probe_snapshot()). This is a no-op for the event channel.
+            }
+            ProbeQuery::GetIp | ProbeQuery::GetPc => {}
+            ProbeQuery::GetNode(_) | ProbeQuery::GetNodeByLabel(_) => {}
+            ProbeQuery::GetRegion(_) => {}
+            ProbeQuery::GetTraceTail(_) => {}
+            ProbeQuery::SetBreakpoint(ip) => {
+                self.breakpoints.insert(ip, BreakpointType::Instruction(ip));
+            }
+            ProbeQuery::ClearBreakpoint(ip) => {
+                self.breakpoints.remove(&ip);
+            }
+            ProbeQuery::Step => {
+                // Unpause and set stepping mode — run_probed() will
+                // execute exactly one instruction then re-pause.
+                self.paused = false;
+                self.stepping = true;
+            }
+            ProbeQuery::Continue => {
+                self.paused = false;
+                self.stepping = false;
+            }
+            ProbeQuery::SetTracerMode(mode) => {
+                self.tracer_mode = mode;
+            }
+            ProbeQuery::ListBreakpoints => {}
+            ProbeQuery::ClearAllBreakpoints => {
+                self.breakpoints.clear();
+            }
+            ProbeQuery::ListRegions => {}
+            ProbeQuery::GraphSummary => {}
+        }
+        Ok(())
+    }
+
+    /// Send a probe event to the attached probe tool.
+    fn send_probe_event(&self, event: ProbeEvent) -> Result<(), VmError> {
+        if let Some(ref tx) = self.probe_event_tx {
+            let _ = tx.send(event);
+        }
+        Ok(())
+    }
+
+    /// Build a ProbeSnapshot from the current VM state.
+    pub fn probe_snapshot(&self) -> ProbeSnapshot {
+        let program_id = self.program.as_ref().map(|p| p.id);
+        ProbeSnapshot::VmState {
+            program_id,
+            ip: self.ip,
+            steps_executed: self.steps_executed,
+            status: if self.paused {
+                "Paused".to_string()
+            } else if self.program.is_some() {
+                "Running".to_string()
+            } else {
+                "Idle".to_string()
+            },
+        }
+    }
+
+    /// Build a ProbeSnapshot for a WorldGraph node.
+    pub fn probe_node(&self, id: a2x_core::node::NodeId) -> Option<ProbeSnapshot> {
+        let node = self.world_graph.lookup(id).ok()??;
+        Some(ProbeSnapshot::Node {
+            id: node.id,
+            concept: node.concept.data,
+            label: node.label,
+            edge_count: node.edges.len(),
+        })
+    }
+
+    /// Build a ProbeSnapshot for a StateField region.
+    pub fn probe_region(&self, name: &str) -> Option<ProbeSnapshot> {
+        let data = self.state_field.read_region(name).ok()?;
+        Some(ProbeSnapshot::Region {
+            name: name.to_string(),
+            offset: 0,
+            len: data.len(),
+            data: data.to_vec(),
+        })
+    }
+
+    /// Build a TraceSegment from the last N memory trace entries.
+    pub fn probe_trace_tail(&self, n: usize) -> ProbeSnapshot {
+        let entries = self.memory_trace.tail(n);
+        let probe_entries: Vec<ProbeTraceEntry> = entries
+            .iter()
+            .map(|e| ProbeTraceEntry {
+                ip: e.ip,
+                timestamp: e.timestamp.map(|t| format!("{:?}", t)),
+                state_preview: e
+                    .state_snapshot_bytes
+                    .chunks(4)
+                    .take(4)
+                    .map(|chunk| {
+                        if chunk.len() == 4 {
+                            f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]])
+                        } else {
+                            0.0
+                        }
+                    })
+                    .collect(),
+            })
+            .collect();
+        ProbeSnapshot::TraceSegment {
+            entries: probe_entries,
+        }
+    }
+
+    /// Execute with probe channel integration. Between each instruction,
+    /// drain probe queries and handle breakpoints.
+    pub fn run_probed(&mut self) -> Result<VmStatus, VmError> {
+        loop {
+            // 1. Check probe channel (non-blocking).
+            self.handle_probe_queries()?;
+
+            // 2. If paused at breakpoint, wait for Continue/Step.
+            if self.paused {
+                // Check probe channel again in case Step/Continue arrived.
+                self.handle_probe_queries()?;
+                if self.paused {
+                    // Still paused — sleep briefly to avoid busy-wait.
+                    std::thread::sleep(Duration::from_millis(1));
+                    continue;
+                }
+            }
+
+            // 3. Execute one step.
+            let old_ip = self.ip;
+            let status = self.step()?;
+
+            // 4. Check breakpoints.
+            if let Some(bp) = self.breakpoints.get(&old_ip).cloned() {
+                self.paused = true;
+                let opcode = self
+                    .program
+                    .as_ref()
+                    .and_then(|p| p.instructions.get(old_ip))
+                    .map(|inst| {
+                        let first_intent = inst.intent.operators.first().copied();
+                        let first_plan = inst.plan.operators.first().copied();
+                        let first_data = inst.data.operators.first().copied();
+                        Self::map_to_opcode(first_intent, first_plan, first_data)
+                    })
+                    .unwrap_or(Opcode::Nop);
+                let _ = self.send_probe_event(ProbeEvent::BreakpointHit {
+                    breakpoint: bp,
+                    ip: old_ip,
+                    opcode,
+                });
+            }
+
+            // 5. Check watchdog.
+            if let Some(max) = self.watchdog_steps {
+                if self.steps_executed >= max as usize {
+                    let _ = self.send_probe_event(ProbeEvent::Halted {
+                        ip: self.ip,
+                        steps_executed: self.steps_executed,
+                    });
+                    return Ok(VmStatus::Halted);
+                }
+            }
+
+            match status {
+                VmStatus::Running => {
+                    // If in stepping mode, re-pause after one instruction.
+                    if self.stepping {
+                        self.paused = true;
+                        let _ = self.send_probe_event(ProbeEvent::Stepped {
+                            ip: self.ip,
+                            opcode: Opcode::Nop,
+                        });
+                    }
+                    if self.tracer_mode != TracerMode::Off {
+                        debug!(ip = self.ip, steps = self.steps_executed, "probed step");
+                    }
+                    continue;
+                }
+                VmStatus::Halted => {
+                    let _ = self.send_probe_event(ProbeEvent::Halted {
+                        ip: self.ip,
+                        steps_executed: self.steps_executed,
+                    });
+                    return Ok(VmStatus::Halted);
+                }
+                VmStatus::Yield => return Ok(VmStatus::Yield),
+                VmStatus::Fault(err) => {
+                    let _ = self.send_probe_event(ProbeEvent::Faulted {
+                        ip: self.ip,
+                        error: err.to_string(),
+                    });
+                    return Err(err);
+                }
+            }
+        }
     }
 
     /// Look up a single context label in the WorldGraph and return its stored
