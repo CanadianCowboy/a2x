@@ -179,15 +179,21 @@ impl MemoryTrace for VecMemoryTrace {
     fn push(&mut self, entry: MemoryEntry) -> Result<(), CoreError> {
         if self.entries.len() >= self.max_capacity {
             // Phase 2.H: simple auto-truncate (drop oldest half). Note: we
-            // intentionally clear compression metadata because the truncation
-            // invalidates RLE run indices — they pointed at the now-drained
-            // positions. After truncation, the trace falls back to logical
-            // storage mode (compressed: false) until the next explicit
-            // compress() call.
+            // intentionally clear ALL compression metadata — RLE runs,
+            // snapshot dedup pool, lookup map, and cached stats — because
+            // the truncation invalidates RLE run indices (they pointed at
+            // the now-drained positions) AND destroys the snapshot hash
+            // basis (snapshot_lookup hashes no longer correspond to any
+            // surviving entries[] payloads). The two clear paths in this
+            // function (overflow truncate vs post-compress push) are now
+            // deliberately symmetric so neither leaves stale compression
+            // metadata observable via distinct_snapshots() / snapshot_pool().
             let keep = self.max_capacity / 2;
             let drain_end = self.entries.len() - keep;
             self.entries.drain(0..drain_end);
             self.rle_runs.clear();
+            self.snapshot_pool.clear();
+            self.snapshot_lookup.clear();
             self.compressed = false;
             self.last_compression = None;
         }
@@ -617,5 +623,49 @@ mod tests {
         assert_eq!(logical_pre, 50);
         trace.compress().unwrap();
         assert_eq!(trace.logical_len(), 50); // post-compress logical == pre-compress logical
+    }
+
+    #[test]
+    fn test_overflow_clears_snapshot_pool() {
+        // Regression: when the autoflow-truncate branch fires while the
+        // snapshot pool is populated (i.e., entries.len() >= max_capacity
+        // AND the trace is in compressed mode with no RLE collapse so
+        // entries[] has not been shrunk by compress), the overflow branch
+        // MUST clear snapshot_pool/snapshot_lookup, not just rle_runs +
+        // compressed + last_compression. Without this, `snapshot_pool()`
+        // and `distinct_snapshots()` would expose stale dedup data
+        // indexed against entries[] items the overflow branch just
+        // drained out of indices [0..drain_end).
+        //
+        // Construction: max_capacity = 10, 10 distinct snapshot payloads
+        // → compress() does NOT trigger RLE collapse (everything differs
+        // by snapshot_byte); entries.len() stays at 10, snapshot_pool
+        // holds 10 distinct payloads. The 11th push triggers overflow.
+        let mut trace = VecMemoryTrace::new(10);
+        for i in 0..10 {
+            trace
+                .push(make_entry_with_inst(i as u8, i as usize, (0xA0 + i) as u8))
+                .unwrap();
+        }
+        trace.compress().unwrap();
+        assert_eq!(trace.entries_physical_len(), 10); // no RLE: all distinct
+        assert_eq!(trace.distinct_snapshots(), 10); // pool pre-overflow
+        assert_eq!(trace.snapshot_pool().len(), 10);
+
+        // 11th push: 10 >= 10 → overflow branch fires first.
+        let entry11 = make_entry_with_inst(99, 99, 0xFE);
+        trace.push(entry11).unwrap();
+
+        // All compression metadata cleared, including snapshot_pool +
+        // snapshot_lookup (the new overflow-branch clear introduced as a
+        // sibling to the post-compress-push branch).
+        assert!(trace.snapshot_pool().is_empty());
+        assert_eq!(trace.distinct_snapshots(), 0);
+        assert!(trace.rle_runs().is_empty());
+        assert!(!trace.compressed);
+        assert!(trace.compression_stats().is_none());
+        // Overflow drained entries[0..5] (keep = 10/2 = 5) then pushed
+        // entry11: 5 + 1 = 6 physical entries.
+        assert_eq!(trace.entries_physical_len(), 6);
     }
 }
