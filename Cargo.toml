@@ -25,6 +25,7 @@ description = "A2X — Agent-to-Anything: an AI-native programming language + ru
 [workspace.dependencies]
 # External dependencies (centralized for workspace-wide consistency)
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 petgraph = "0.7"
 ndarray = "0.16"
 tokio = { version = "1", features = ["full"] }
@@ -33,6 +34,12 @@ tracing = "0.1"
 anyhow = "1"
 blake3 = "1"
 criterion = "0.5"
+# Phase 6: gateway + client deps
+axum = "0.7"
+tower-http = { version = "0.5", features = ["cors"] }
+toml = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+uuid = { version = "1", features = ["v4"] }
 
 [profile.release]
 opt-level = 3

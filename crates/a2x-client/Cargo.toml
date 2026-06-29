@@ -10,6 +10,16 @@ description = "A2X Rust client SDK for connecting external apps to A2X"
 
 [dependencies]
 a2x-core = { path = "../a2x-core" }
+a2x-sigma = { path = "../a2x-sigma" }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util", "macros"] }
 
 [lib]
 name = "a2x_client"
