@@ -39,6 +39,13 @@ use crate::packet::{OmegaPacket, SIZE_I};
 /// only that prefix of `intent_slice` carries the opcode signal.
 const HASH_LEN: usize = 32;
 
+/// Compute Blake3(Opcode::Nop) at runtime. Nop is a valid program
+/// instruction with no canonical Σ intent operator — it decodes to an
+/// empty `SigmaPacket` rather than `Err(NoMatchingOperator)`.
+fn nop_hash() -> [u8; 32] {
+    *blake3::hash(&[Opcode::Nop.as_u8()]).as_bytes()
+}
+
 /// Trait for decompiling Ω tensor packets back into Σ∞ symbolic form.
 ///
 /// Used for debugging, logging, and inspection of compiled programs. Phase 3.1
@@ -125,6 +132,13 @@ impl DecompileToSigma for SigmaPacket {
 
     fn decompile(packet: &OmegaPacket) -> Result<Self, Self::Error> {
         let hash = extract_intent_hash(packet);
+
+        // Nop is a valid program instruction with no intent operator —
+        // decode it to an empty packet rather than erroring.
+        if hash == nop_hash() {
+            return Ok(SigmaPacket::new());
+        }
+
         let table = intent_hash_table();
         match table.get(&hash) {
             Some(intent) => {
@@ -294,6 +308,22 @@ mod tests {
             let expected = opcode_to_intent(op).unwrap();
             assert_eq!(sigma.intent.operators, vec![expected], "{op:?}");
         }
+    }
+
+    #[test]
+    fn test_decompile_handcrafted_nop_returns_empty_packet() {
+        // Opcode::Nop is a valid program instruction — it should decode
+        // to an empty SigmaPacket, not an error.
+        let mut pkt: OmegaPacket = OmegaPacket::zeros();
+        let hash = nop_hash();
+        for (j, byte) in hash.iter().enumerate().take(HASH_LEN) {
+            pkt.intent_slice_mut()[j] = *byte as f32 / 255.0;
+        }
+        let sigma = SigmaPacket::decompile(&pkt).expect("Nop must decode");
+        assert!(sigma.intent.operators.is_empty(), "Nop → empty intent");
+        assert!(sigma.context.is_empty());
+        assert!(sigma.plan.is_empty());
+        assert!(sigma.data.is_empty());
     }
 
     #[test]
