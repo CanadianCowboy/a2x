@@ -49,6 +49,9 @@ pub struct VmLimits {
     /// Phase 2.D: how many recent MemoryTrace entries the REFLECT operator
     /// summarizes when it builds a self-model node.
     pub reflect_window: usize,
+    /// Phase 2.E: how many top-K belief-bias indices the PLAN operator
+    /// produces Bind actions for.
+    pub plan_top_k: usize,
 }
 
 impl Default for VmLimits {
@@ -58,6 +61,7 @@ impl Default for VmLimits {
             max_steps: 10_000,
             evolve_dt: Duration::from_millis(10),
             reflect_window: crate::operators::reflect::REFLECT_DEFAULT_WINDOW,
+            plan_top_k: crate::operators::plan::PLAN_DEFAULT_TOP_K,
         }
     }
 }
@@ -78,6 +82,9 @@ pub struct CcsVm {
     /// carrying the `__last_reflect` label). Phase 2.E's plan operator reads
     /// this to bias action selection toward what reflect just summarized.
     pub last_reflect: Option<NodeId>,
+    /// Phase 2.E: actions emitted by the most recent plan operator. Sorted
+    /// descending by priority — drain from index 0 forward for execution.
+    pub last_plan_actions: Vec<crate::operators::plan::Action>,
 }
 
 /// Bundle of decoded instruction data, extracted without borrowing `self`.
@@ -111,6 +118,7 @@ impl CcsVm {
             limits: VmLimits::default(),
             started_at: None,
             last_reflect: None,
+            last_plan_actions: Vec::new(),
         }
     }
 
@@ -507,7 +515,18 @@ impl CcsVm {
             }
             Opcode::Plan => {
                 debug!("PLAN operator");
-                let _actions = plan::plan();
+                // Phase 2.E: route plan to the real Action emitter. Result is
+                // retained on `self.last_plan_actions` so downstream callers
+                // (e.g. CLI agent in Phase 2.I) read it without re-querying.
+                // Note: plan() allocates a Plan node → takes `&mut` on graph.
+                let result = plan::plan(
+                    &mut self.world_graph,
+                    &self.state_field,
+                    self.last_reflect,
+                    self.limits.plan_top_k,
+                )
+                .map_err(|e| VmError::Other(e.to_string()))?;
+                self.last_plan_actions = result.actions;
             }
             Opcode::Actuate => {
                 debug!("ACT operator");
