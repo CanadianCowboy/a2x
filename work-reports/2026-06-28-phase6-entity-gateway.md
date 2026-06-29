@@ -1,7 +1,7 @@
 # Phase 6 — Entity Integration (Gateway + Client SDK)
 
 > **Date:** 2026-06-28
-> **Tag:** v0.6.0
+> **Tag:** v0.6.0 (commit `290fbe9`)
 > **Scope:** plans/06-entity-gateway.md, PLAN.md §30
 
 ---
@@ -90,7 +90,7 @@ TOML-deserializable `GatewayConfig` with sections for HTTP, WebSocket, TCP, stdi
 |-------|-------|--------|
 | a2x-gateway | 52 | ✅ All pass |
 | a2x-client | 6 (1 doc-test) | ✅ All pass |
-| **Total new** | **58** | ✅ |
+| **Total new** | **59** | ✅ |
 
 **Clippy:** Clean (0 warnings)
 **Fmt:** Clean
@@ -99,24 +99,24 @@ TOML-deserializable `GatewayConfig` with sections for HTTP, WebSocket, TCP, stdi
 
 ## Files Created/Modified
 
-| File | Lines | Purpose |
-|------|-------|---------|
-| `Cargo.toml` | +8 deps | Workspace dependency additions |
-| `crates/a2x-gateway/Cargo.toml` | 26 | Gateway crate manifest |
-| `crates/a2x-gateway/src/lib.rs` | 22 | Module declarations + re-exports |
-| `crates/a2x-gateway/src/error.rs` | 72 | GatewayError enum (10 variants) |
-| `crates/a2x-gateway/src/entity.rs` | 130 | Entity trait, EntityId, EntityInfo, SimpleEntity |
-| `crates/a2x-gateway/src/auth.rs` | 130 | AuthMethod, EntityPermissions, AuthProvider |
-| `crates/a2x-gateway/src/config.rs` | 160 | GatewayConfig (TOML), all sub-configs |
-| `crates/a2x-gateway/src/webhook.rs` | 145 | WebhookManager with filtering |
-| `crates/a2x-gateway/src/gateway.rs` | 320 | GatewayState + Gateway service |
-| `crates/a2x-gateway/src/listeners/mod.rs` | 105 | ProtocolListener trait, message types |
-| `crates/a2x-gateway/src/listeners/http.rs` | 280 | axum HTTP listener + handlers |
-| `crates/a2x-gateway/src/listeners/ws.rs` | 175 | WebSocket frame parsing |
-| `crates/a2x-gateway/src/listeners/tcp.rs` | 170 | TCP length-prefix framing |
-| `crates/a2x-gateway/src/listeners/stdio.rs` | 150 | stdin/stdout line processing |
-| `crates/a2x-client/Cargo.toml` | 22 | Client crate manifest |
-| `crates/a2x-client/src/lib.rs` | 220 | A2xClient SDK |
+| File | Purpose |
+|------|---------|
+| `Cargo.toml` | +6 workspace deps (axum, tower-http, toml, reqwest, uuid, serde_json) |
+| `crates/a2x-gateway/Cargo.toml` | Gateway crate manifest |
+| `crates/a2x-gateway/src/lib.rs` | Module declarations + re-exports |
+| `crates/a2x-gateway/src/error.rs` | GatewayError enum (10 variants) |
+| `crates/a2x-gateway/src/entity.rs` | Entity trait, EntityId, EntityInfo, SimpleEntity |
+| `crates/a2x-gateway/src/auth.rs` | AuthMethod, EntityPermissions, AuthProvider |
+| `crates/a2x-gateway/src/config.rs` | GatewayConfig (TOML), all sub-configs |
+| `crates/a2x-gateway/src/webhook.rs` | WebhookManager with filtering |
+| `crates/a2x-gateway/src/gateway.rs` | GatewayState + Gateway service |
+| `crates/a2x-gateway/src/listeners/mod.rs` | ProtocolListener trait, message types |
+| `crates/a2x-gateway/src/listeners/http.rs` | axum HTTP listener + handlers |
+| `crates/a2x-gateway/src/listeners/ws.rs` | WebSocket frame parsing |
+| `crates/a2x-gateway/src/listeners/tcp.rs` | TCP length-prefix framing |
+| `crates/a2x-gateway/src/listeners/stdio.rs` | stdin/stdout line processing |
+| `crates/a2x-client/Cargo.toml` | Client crate manifest |
+| `crates/a2x-client/src/lib.rs` | A2xClient SDK |
 
 ---
 
@@ -137,13 +137,20 @@ TOML-deserializable `GatewayConfig` with sections for HTTP, WebSocket, TCP, stdi
 | §7 | Client SDK | ✅ (Rust) |
 | §8 | Configuration | ✅ (TOML) |
 
+### Reviewer Notes (deferred to Phase 7+):
+
+- `std::sync::Mutex` in async HTTP handlers → switch to `tokio::sync::Mutex`
+- `Gateway::add_listener()` not yet public → wire listener registration
+- `EntityPermissions` not enforced in auth flow → add enforcement layer
+- `incoming_tx`/`response_rx` fields in WS/TCP listeners are scaffolding → wire into listener logic
+
 ---
 
 ## Next Steps
 
-- Phase 7: Probe & Debug Tools (extend Phase 5 with network probe)
+- Wire tokio async runtime into HTTP/WS listeners (tokio::sync::Mutex)
+- Add `Gateway::add_listener()` for dynamic listener registration
 - End-to-end demo: HTTP client → gateway → bus → agent → result
-- WebSocket async integration (tokio tasks for HTTP/WS)
 - Python/JavaScript client SDKs (third-party)
 - Entity protocol listener crates (a2x-entity-http, etc.)
 
