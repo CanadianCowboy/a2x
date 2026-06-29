@@ -128,6 +128,17 @@ pub trait WorldGraph: Send + Sync {
     /// Idempotent: calling twice with the same value stores it once.
     fn set_provenance(&mut self, id: NodeId, provenance: &str) -> Result<(), CoreError>;
 
+    /// Return the IDs of all nodes currently in the graph.
+    ///
+    /// Order is implementation-defined; for `PetgraphWorldGraph` it follows
+    /// insertion order. Useful for full-graph sweeps (e.g. `evolve` bumps
+    /// `access_count` for every node each tick).
+    fn node_ids(&self) -> Vec<NodeId>;
+
+    /// Increment `metadata.access_count` for the given node by 1.
+    /// Returns `InvalidNodeId` if `id` is not present in the graph.
+    fn bump_access_count(&mut self, id: NodeId) -> Result<(), CoreError>;
+
     /// Get the IDs of all neighbors of a node.
     fn neighbors(&self, id: NodeId) -> Result<Vec<NodeId>, CoreError>;
 

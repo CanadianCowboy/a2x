@@ -1063,4 +1063,126 @@ mod tests {
         assert!(prov.contains("modality=Text"));
         assert!(prov.contains("floats=3"));
     }
+
+    // === Phase 2.C: evolve ===
+
+    fn synth_evolve_packet() -> SigmaPacket {
+        let mut p = SigmaPacket::new();
+        p.intent.operators.push(IntentOp::Delay);
+        p
+    }
+
+    #[test]
+    fn test_step_evolve_advances_ip_and_bumps_access_counts() {
+        let mut vm = CcsVm::new();
+        let id_a = vm
+            .world_graph
+            .allocate(ConceptVector::from_vec(vec![1.0]))
+            .unwrap();
+        let id_b = vm
+            .world_graph
+            .allocate(ConceptVector::from_vec(vec![2.0]))
+            .unwrap();
+        let mut prog = SigmaProgram::new();
+        prog.push(synth_evolve_packet());
+        vm.load(prog);
+        let status = vm.step().unwrap();
+        assert_eq!(status, VmStatus::Running);
+        assert_eq!(vm.ip, 1); // ip advanced after evolve
+                              // Every node's access_count should now be 1.
+        assert_eq!(
+            vm.world_graph
+                .lookup(id_a)
+                .unwrap()
+                .unwrap()
+                .metadata
+                .access_count,
+            1
+        );
+        assert_eq!(
+            vm.world_graph
+                .lookup(id_b)
+                .unwrap()
+                .unwrap()
+                .metadata
+                .access_count,
+            1
+        );
+    }
+
+    #[test]
+    fn test_step_evolve_attention_decays() {
+        let mut vm = CcsVm::new();
+        let ones = vec![1.0f32; 128];
+        vm.state_field.write_region("attention", &ones).unwrap();
+        let mut prog = SigmaProgram::new();
+        prog.push(synth_evolve_packet());
+        vm.load(prog);
+        let status = vm.step().unwrap();
+        assert_eq!(status, VmStatus::Running);
+        let after = vm.state_field.read_region("attention").unwrap();
+        for v in after {
+            assert!((v - 0.95).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn test_step_evolve_temporal_decrements() {
+        // vm.limits.evolve_dt = Duration::from_millis(10); temporal[0] -= 0.01
+        let mut vm = CcsVm::new();
+        let mut prog = SigmaProgram::new();
+        prog.push(synth_evolve_packet());
+        vm.load(prog);
+        vm.step().unwrap();
+        let temporal = vm.state_field.read_region("temporal").unwrap();
+        assert!((temporal[0] - (-0.01)).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_step_evolve_belief_drifts() {
+        let mut vm = CcsVm::new();
+        let before_belief = vm.state_field.read_region("belief").unwrap().to_vec();
+        let mut prog = SigmaProgram::new();
+        prog.push(synth_evolve_packet());
+        vm.load(prog);
+        vm.step().unwrap();
+        let after_belief = vm.state_field.read_region("belief").unwrap().to_vec();
+        let diffs = before_belief
+            .iter()
+            .zip(&after_belief)
+            .filter(|(a, b)| a != b)
+            .count();
+        assert!(diffs > 0, "belief should drift after evolve");
+    }
+
+    #[test]
+    fn test_step_evolve_three_steps_deterministic() {
+        // Two fresh VMs running 3 evolutions produce identical StateField
+        // snapshots — proves no wall-clock is read.
+        let mut prog = SigmaProgram::new();
+        for _ in 0..3 {
+            prog.push(synth_evolve_packet());
+        }
+
+        let mut vm1 = CcsVm::new();
+        vm1.load(prog.clone());
+        vm1.run().unwrap();
+
+        let mut vm2 = CcsVm::new();
+        vm2.load(prog);
+        vm2.run().unwrap();
+
+        assert_eq!(
+            vm1.state_field.read_region("belief").unwrap(),
+            vm2.state_field.read_region("belief").unwrap(),
+        );
+        assert_eq!(
+            vm1.state_field.read_region("attention").unwrap(),
+            vm2.state_field.read_region("attention").unwrap(),
+        );
+        assert_eq!(
+            vm1.state_field.read_region("temporal").unwrap(),
+            vm2.state_field.read_region("temporal").unwrap(),
+        );
+    }
 }

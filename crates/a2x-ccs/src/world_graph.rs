@@ -335,6 +335,26 @@ impl WorldGraph for PetgraphWorldGraph {
         }
     }
 
+    fn node_ids(&self) -> Vec<NodeId> {
+        // Stable insertion order is guaranteed by petgraph's StableGraph.
+        self.graph
+            .node_indices()
+            .filter_map(|ni| self.graph.node_weight(ni).map(|p| p.id))
+            .collect()
+    }
+
+    fn bump_access_count(&mut self, id: NodeId) -> Result<(), CoreError> {
+        let ni = self
+            .node_index(id)
+            .ok_or(CoreError::InvalidNodeId(id.as_u64()))?;
+        if let Some(payload) = self.graph.node_weight_mut(ni) {
+            payload.metadata.access_count = payload.metadata.access_count.saturating_add(1);
+            Ok(())
+        } else {
+            Err(CoreError::InvalidNodeId(id.as_u64()))
+        }
+    }
+
     fn neighbors(&self, id: NodeId) -> Result<Vec<NodeId>, CoreError> {
         let ni = self
             .node_index(id)
@@ -554,6 +574,47 @@ mod tests {
     fn test_set_provenance_unknown_id_errors() {
         let mut wg = PetgraphWorldGraph::new();
         let result = wg.set_provenance(NodeId::new(999), "anything");
+        assert!(matches!(result, Err(CoreError::InvalidNodeId(999))));
+    }
+
+    // === Phase 2.C: full-graph sweep ===
+
+    #[test]
+    fn test_node_ids_includes_allocated() {
+        let mut wg = PetgraphWorldGraph::new();
+        assert!(wg.node_ids().is_empty());
+        let a = wg.allocate(make_concept(vec![1.0])).unwrap();
+        let b = wg.allocate(make_concept(vec![2.0])).unwrap();
+        let ids = wg.node_ids();
+        assert_eq!(ids.len(), 2);
+        assert!(ids.contains(&a));
+        assert!(ids.contains(&b));
+    }
+
+    #[test]
+    fn test_node_ids_excludes_deallocated() {
+        let mut wg = PetgraphWorldGraph::new();
+        let a = wg.allocate(make_concept(vec![1.0])).unwrap();
+        let _b = wg.allocate(make_concept(vec![2.0])).unwrap();
+        wg.deallocate(a).unwrap();
+        assert_eq!(wg.node_ids().len(), 1);
+    }
+
+    #[test]
+    fn test_bump_access_count_increments() {
+        let mut wg = PetgraphWorldGraph::new();
+        let id = wg.allocate(make_concept(vec![1.0])).unwrap();
+        assert_eq!(wg.lookup(id).unwrap().unwrap().metadata.access_count, 0);
+        wg.bump_access_count(id).unwrap();
+        wg.bump_access_count(id).unwrap();
+        wg.bump_access_count(id).unwrap();
+        assert_eq!(wg.lookup(id).unwrap().unwrap().metadata.access_count, 3);
+    }
+
+    #[test]
+    fn test_bump_access_count_unknown_id_errors() {
+        let mut wg = PetgraphWorldGraph::new();
+        let result = wg.bump_access_count(NodeId::new(999));
         assert!(matches!(result, Err(CoreError::InvalidNodeId(999))));
     }
 }
