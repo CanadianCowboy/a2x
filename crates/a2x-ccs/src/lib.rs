@@ -36,7 +36,8 @@ pub use operators::plan::{plan, Action};
 pub use operators::reflect::{reflect, PolicyUpdate};
 pub use policy::StubPolicy;
 pub use probe::{
-    BreakpointType, ProbeEvent, ProbeQuery, ProbeSnapshot, ProbeTraceEntry, TracerMode,
+    AccessType, BreakpointType, Condition, ProbeEvent, ProbeQuery, ProbeSnapshot, ProbeTraceEntry,
+    TraceLogEntry, TracerMode,
 };
 pub use safety::{SafetyClassification, SafetyConstraints, SafetyLevel};
 pub use state::{init_default_regions, FlatStateField, StateRegion};

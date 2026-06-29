@@ -8,8 +8,15 @@
 //   ProbeTool ──mpsc::Sender──▶ CcsVm (probe_rx) ──mpsc::Sender──▶ ProbeTool (event_rx)
 //                                                                      │
 //                                                                      ▼
-//                                                               Visualization
-//                                                              (graphviz, heatmap)
+//                                                              Visualization
+//                                                             (graphviz, heatmap)
+//
+// Sub-modules (Phase 5 gap-fill):
+//   tracer   — instruction trace formatting, timeline, state heatmap
+//   inspector — CLI probe commands (status, graph, regions, break, step, etc.)
+
+pub mod inspector;
+pub mod tracer;
 
 use a2x_ccs::probe::{ProbeEvent, ProbeQuery, ProbeSnapshot, TracerMode};
 
@@ -122,6 +129,29 @@ impl ProbeTool {
     }
 }
 
+// ─── ProbeExt — Programmatic cross-agent probing ────────────────────
+
+/// Extension trait for programmatic probing of CCS VMs.
+///
+/// This enables **self-debugging agents** — an agent that encounters an error
+/// can probe its own state, generate a diagnostic program, and send it to
+/// another agent for analysis.
+///
+/// See plans/07-probe.md §8.
+pub trait ProbeExt {
+    /// Get a snapshot of the VM state via the probe channel.
+    fn probe_snapshot(&self) -> Result<ProbeSnapshot, ProbeError>;
+
+    /// Get a WorldGraph node by ID via the probe channel.
+    fn probe_node(&self, id: a2x_core::node::NodeId) -> Result<ProbeSnapshot, ProbeError>;
+
+    /// Get a StateField region by name via the probe channel.
+    fn probe_region(&self, name: &str) -> Result<ProbeSnapshot, ProbeError>;
+
+    /// Get the last N memory trace entries via the probe channel.
+    fn probe_trace(&self, n: usize) -> Result<ProbeSnapshot, ProbeError>;
+}
+
 // ─── Errors ─────────────────────────────────────────────────────────
 
 /// Errors that can occur during probing.
@@ -216,6 +246,40 @@ pub fn format_snapshot(snap: &ProbeSnapshot) -> String {
         ProbeSnapshot::BreakpointCleared(ip) => format!("Breakpoint cleared at ip={}", ip),
         ProbeSnapshot::Stepped => "Stepped one instruction".to_string(),
         ProbeSnapshot::Continued => "Continued execution".to_string(),
+        ProbeSnapshot::BreakpointList(bps) => {
+            if bps.is_empty() {
+                "No breakpoints set.".to_string()
+            } else {
+                let lines: Vec<String> = bps
+                    .iter()
+                    .map(|(ip, desc)| format!("  {}: {}", ip, desc))
+                    .collect();
+                format!("Breakpoints ({}):\n{}", bps.len(), lines.join("\n"))
+            }
+        }
+        ProbeSnapshot::RegionList(regions) => {
+            let mut lines = vec![
+                format!("{:<16} {:>8} {:>8} {:>8}", "Region", "Offset", "Len", "End"),
+                "-".repeat(44),
+            ];
+            for (name, offset, len) in regions {
+                lines.push(format!(
+                    "{:<16} {:>8} {:>8} {:>8}",
+                    name,
+                    offset,
+                    len,
+                    offset + len
+                ));
+            }
+            lines.join("\n")
+        }
+        ProbeSnapshot::GraphSummary {
+            node_count,
+            edge_count,
+        } => {
+            format!("WorldGraph: {} nodes, {} edges", node_count, edge_count)
+        }
+        ProbeSnapshot::TraceLog(entries) => tracer::Tracer::format_entries(entries),
     }
 }
 
@@ -234,7 +298,12 @@ pub fn world_graph_to_dot(
     for (id, label, val) in nodes {
         let fallback = format!("#{}", id);
         let name = label.as_deref().unwrap_or(&fallback);
-        dot.push_str(&format!("  n{} [label=\"{}\\n{:.3}\"];\n", id, name, val));
+        // Escape special characters in label for dot format
+        let escaped = name.replace('\\', "\\\\").replace('"', "\\\"");
+        dot.push_str(&format!(
+            "  n{} [label=\"{}\\n{:.3}\"];\n",
+            id, escaped, val
+        ));
     }
 
     dot.push('\n');
@@ -264,6 +333,28 @@ pub fn state_field_summary(regions: &[(String, usize, usize)], // (name, offset,
             len,
             offset + len
         ));
+    }
+    lines.join("\n")
+}
+
+/// Generate a simple ASCII heatmap of a f32 slice.
+///
+/// Maps values in [-1, 1] to ASCII characters: ` .:-=+*#%@`
+pub fn heatmap_ascii(data: &[f32], width: usize) -> String {
+    let chars = " .:-=+*#%@";
+    let mut lines = Vec::new();
+
+    for (i, chunk) in data.chunks(width).enumerate() {
+        let mut row = format!("{:4}: ", i * width);
+        for &val in chunk {
+            let normalized = (val + 1.0) / 2.0;
+            let idx = (normalized * (chars.len() - 1) as f32)
+                .round()
+                .max(0.0)
+                .min((chars.len() - 1) as f32) as usize;
+            row.push(chars.chars().nth(idx).unwrap_or('.'));
+        }
+        lines.push(row);
     }
     lines.join("\n")
 }
@@ -354,12 +445,28 @@ mod tests {
     }
 
     #[test]
+    fn test_world_graph_to_dot_escapes_labels() {
+        let nodes = vec![(1u64, Some("label with \"quotes\"".to_string()), 0.0)];
+        let dot = world_graph_to_dot(&nodes, &[]);
+        assert!(dot.contains("\\\"quotes\\\""));
+    }
+
+    #[test]
     fn test_state_field_summary() {
         let regions = vec![("goal".to_string(), 0, 64), ("belief".to_string(), 64, 256)];
         let summary = state_field_summary(&regions);
         assert!(summary.contains("goal"));
         assert!(summary.contains("belief"));
         assert!(summary.contains("Offset"));
+    }
+
+    #[test]
+    fn test_heatmap_ascii() {
+        let data = vec![-1.0, -0.5, 0.0, 0.5, 1.0];
+        let output = heatmap_ascii(&data, 5);
+        assert!(output.contains(" ")); // space maps to -1.0
+        assert!(output.contains("@")); // @ maps to 1.0
+        assert!(output.contains("+")); // + maps to 0.0
     }
 
     #[test]
@@ -372,5 +479,62 @@ mod tests {
             ProbeError::NotConnected.to_string(),
             "probe tool not connected to any VM"
         );
+    }
+
+    #[test]
+    fn test_format_snapshot_breakpoint_list_empty() {
+        let snap = ProbeSnapshot::BreakpointList(vec![]);
+        let text = format_snapshot(&snap);
+        assert!(text.contains("No breakpoints set"));
+    }
+
+    #[test]
+    fn test_format_snapshot_breakpoint_list_with_entries() {
+        let snap = ProbeSnapshot::BreakpointList(vec![
+            (5, "instruction@5".to_string()),
+            (10, "opcode=Bind".to_string()),
+        ]);
+        let text = format_snapshot(&snap);
+        assert!(text.contains("Breakpoints (2)"));
+        assert!(text.contains("instruction@5"));
+    }
+
+    #[test]
+    fn test_format_snapshot_region_list() {
+        let snap = ProbeSnapshot::RegionList(vec![
+            ("goal".to_string(), 0, 64),
+            ("belief".to_string(), 64, 256),
+        ]);
+        let text = format_snapshot(&snap);
+        assert!(text.contains("goal"));
+        assert!(text.contains("belief"));
+    }
+
+    #[test]
+    fn test_format_snapshot_graph_summary() {
+        let snap = ProbeSnapshot::GraphSummary {
+            node_count: 42,
+            edge_count: 100,
+        };
+        let text = format_snapshot(&snap);
+        assert!(text.contains("42 nodes"));
+        assert!(text.contains("100 edges"));
+    }
+
+    #[test]
+    fn test_format_snapshot_trace_log() {
+        use a2x_ccs::probe::TraceLogEntry;
+        use a2x_core::opcode::Opcode;
+        let snap = ProbeSnapshot::TraceLog(vec![TraceLogEntry {
+            ip: 3,
+            opcode: Opcode::Bind,
+            steps: 100,
+            state_summary: vec![0.5],
+            trace_len: Some(50),
+        }]);
+        let text = format_snapshot(&snap);
+        // Tracer format is "[   3] Bind (step  100) state=[0.500..] trace=50"
+        assert!(text.contains("3]"));
+        assert!(text.contains("Bind"));
     }
 }

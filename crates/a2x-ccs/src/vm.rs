@@ -18,7 +18,8 @@ use crate::error::VmError;
 use crate::memory::VecMemoryTrace;
 use crate::operators::{bind, differentiate, ground, plan, reflect};
 use crate::probe::{
-    BreakpointType, ProbeEvent, ProbeQuery, ProbeSnapshot, ProbeTraceEntry, TracerMode,
+    BreakpointType, ProbeEvent, ProbeQuery, ProbeSnapshot, ProbeTraceEntry, TraceLogEntry,
+    TracerMode,
 };
 use crate::safety::{SafetyConstraints, SafetyLevel};
 use crate::state::{init_default_regions, FlatStateField};
@@ -100,6 +101,8 @@ pub struct CcsVm {
     watchdog_steps: Option<u64>,
     /// Tracer mode — controls what's logged between instructions.
     tracer_mode: TracerMode,
+    /// Tracer log entries collected during execution (used by TraceLog query).
+    tracer_log: Vec<TraceLogEntry>,
     /// Whether execution is paused at a breakpoint.
     paused: bool,
     /// Single-step mode: execute one instruction then re-pause.
@@ -143,6 +146,7 @@ impl CcsVm {
             breakpoints: std::collections::HashMap::new(),
             watchdog_steps: None,
             tracer_mode: TracerMode::default(),
+            tracer_log: Vec::new(),
             paused: false,
             stepping: false,
         }
@@ -179,6 +183,21 @@ impl CcsVm {
         self.started_at
             .map(|t| t.elapsed())
             .unwrap_or(Duration::ZERO)
+    }
+
+    /// Get the current tracer mode.
+    pub fn tracer_mode(&self) -> TracerMode {
+        self.tracer_mode
+    }
+
+    /// Get the tracer log entries collected so far.
+    pub fn tracer_log(&self) -> &[TraceLogEntry] {
+        &self.tracer_log
+    }
+
+    /// Get the current tracer log length.
+    pub fn tracer_log_len(&self) -> usize {
+        self.tracer_log.len()
     }
 
     // ── Phase 5: Probe channel API ────────────────────────────────────
@@ -234,6 +253,9 @@ impl CcsVm {
             ProbeQuery::ClearBreakpoint(ip) => {
                 self.breakpoints.remove(&ip);
             }
+            // Phase 5 gap-fill: advanced breakpoint types
+            // Note: NodeAccess/RegionAccess/Conditional breakpoints are stored
+            // but their evaluation happens in check_advanced_breakpoints().
             ProbeQuery::Step => {
                 // Unpause and set stepping mode — run_probed() will
                 // execute exactly one instruction then re-pause.
@@ -353,24 +375,86 @@ impl CcsVm {
             let old_ip = self.ip;
             let status = self.step()?;
 
-            // 4. Check breakpoints.
+            // 4. Check breakpoints — instruction-level (HashMap lookup).
+            let current_opcode = self
+                .program
+                .as_ref()
+                .and_then(|p| p.instructions.get(old_ip))
+                .map(|inst| {
+                    let first_intent = inst.intent.operators.first().copied();
+                    let first_plan = inst.plan.operators.first().copied();
+                    let first_data = inst.data.operators.first().copied();
+                    Self::map_to_opcode(first_intent, first_plan, first_data)
+                })
+                .unwrap_or(Opcode::Nop);
+
             if let Some(bp) = self.breakpoints.get(&old_ip).cloned() {
                 self.paused = true;
-                let opcode = self
-                    .program
-                    .as_ref()
-                    .and_then(|p| p.instructions.get(old_ip))
-                    .map(|inst| {
-                        let first_intent = inst.intent.operators.first().copied();
-                        let first_plan = inst.plan.operators.first().copied();
-                        let first_data = inst.data.operators.first().copied();
-                        Self::map_to_opcode(first_intent, first_plan, first_data)
-                    })
-                    .unwrap_or(Opcode::Nop);
                 let _ = self.send_probe_event(ProbeEvent::BreakpointHit {
                     breakpoint: bp,
                     ip: old_ip,
-                    opcode,
+                    opcode: current_opcode,
+                });
+            }
+
+            // 4b. Check advanced breakpoints (opcode, conditional).
+            for bp in self.breakpoints.values().cloned() {
+                match &bp {
+                    BreakpointType::Opcode(op) if *op == current_opcode && old_ip != 0 => {
+                        if !self.paused {
+                            self.paused = true;
+                            let _ = self.send_probe_event(ProbeEvent::BreakpointHit {
+                                breakpoint: bp,
+                                ip: old_ip,
+                                opcode: current_opcode,
+                            });
+                        }
+                    }
+                    BreakpointType::AfterSteps(target) => {
+                        if self.steps_executed as u64 > *target && !self.paused {
+                            self.paused = true;
+                            let _ = self.send_probe_event(ProbeEvent::BreakpointHit {
+                                breakpoint: bp,
+                                ip: old_ip,
+                                opcode: current_opcode,
+                            });
+                        }
+                    }
+                    BreakpointType::Conditional { condition } => {
+                        if self.eval_condition(condition, old_ip) && !self.paused {
+                            self.paused = true;
+                            let _ = self.send_probe_event(ProbeEvent::BreakpointHit {
+                                breakpoint: BreakpointType::Conditional {
+                                    condition: condition.clone(),
+                                },
+                                ip: old_ip,
+                                opcode: current_opcode,
+                            });
+                        }
+                    }
+                    _ => {}
+                }
+            }
+
+            // 4c. Record tracer log entry (if tracer is active).
+            if self.tracer_mode != TracerMode::Off {
+                let state_summary: Vec<f32> = self
+                    .state_field
+                    .raw_data()
+                    .iter()
+                    .take(4)
+                    .copied()
+                    .collect();
+                let trace_len = match self.tracer_mode {
+                    TracerMode::Full | TracerMode::Verbose => Some(self.memory_trace.len()),
+                    _ => None,
+                };
+                self.tracer_log.push(TraceLogEntry {
+                    ip: old_ip,
+                    opcode: current_opcode,
+                    steps: self.steps_executed,
+                    state_summary,
+                    trace_len,
                 });
             }
 
@@ -392,11 +476,34 @@ impl CcsVm {
                         self.paused = true;
                         let _ = self.send_probe_event(ProbeEvent::Stepped {
                             ip: self.ip,
-                            opcode: Opcode::Nop,
+                            opcode: current_opcode,
                         });
                     }
-                    if self.tracer_mode != TracerMode::Off {
-                        debug!(ip = self.ip, steps = self.steps_executed, "probed step");
+                    // Tracer: log based on mode verbosity.
+                    match self.tracer_mode {
+                        TracerMode::Off => {}
+                        TracerMode::Light => {
+                            debug!(ip = self.ip, opcode = ?current_opcode, steps = self.steps_executed, "trace:light");
+                        }
+                        TracerMode::Full => {
+                            debug!(
+                                ip = self.ip,
+                                opcode = ?current_opcode,
+                                steps = self.steps_executed,
+                                trace_len = self.memory_trace.len(),
+                                "trace:full"
+                            );
+                        }
+                        TracerMode::Verbose => {
+                            debug!(
+                                ip = self.ip,
+                                opcode = ?current_opcode,
+                                steps = self.steps_executed,
+                                trace_len = self.memory_trace.len(),
+                                call_depth = self.call_stack.len(),
+                                "trace:verbose"
+                            );
+                        }
                     }
                     continue;
                 }
@@ -913,12 +1020,56 @@ impl CcsVm {
     pub fn run(&mut self) -> Result<VmStatus, VmError> {
         loop {
             match self.step()? {
-                VmStatus::Running => continue,
+                VmStatus::Running => {
+                    // Tracer: log even in non-probed run mode.
+                    if self.tracer_mode != TracerMode::Off {
+                        self.tracer_log.push(TraceLogEntry {
+                            ip: self.ip,
+                            opcode: Opcode::Nop, // post-step, opcode unknown here
+                            steps: self.steps_executed,
+                            state_summary: self
+                                .state_field
+                                .raw_data()
+                                .iter()
+                                .take(4)
+                                .copied()
+                                .collect(),
+                            trace_len: Some(self.memory_trace.len()),
+                        });
+                    }
+                    continue;
+                }
                 VmStatus::Halted => return Ok(VmStatus::Halted),
                 VmStatus::Yield => return Ok(VmStatus::Yield),
                 VmStatus::Fault(err) => return Err(err),
             }
         }
+    }
+
+    /// Evaluate a `Condition` against current VM state.
+    fn eval_condition(&self, condition: &crate::probe::Condition, ip: usize) -> bool {
+        match condition {
+            crate::probe::Condition::AtInstruction(target) => ip == *target,
+            crate::probe::Condition::AfterSteps(n) => self.steps_executed as u64 > *n,
+            crate::probe::Condition::Custom(_) => false, // Phase 6+: WASM/DSL
+        }
+    }
+
+    /// Get region names for the ListRegions probe query.
+    pub fn region_names(&self) -> Vec<(String, usize, usize)> {
+        self.state_field
+            .region_names()
+            .iter()
+            .map(|name| {
+                let data = self.state_field.read_region(name).unwrap_or(&[]);
+                (name.to_string(), 0, data.len())
+            })
+            .collect()
+    }
+
+    /// Get graph summary (node count, edge count) for the GraphSummary probe query.
+    pub fn graph_summary(&self) -> (usize, usize) {
+        (self.world_graph.node_count(), self.world_graph.edge_count())
     }
 
     fn map_to_opcode(
