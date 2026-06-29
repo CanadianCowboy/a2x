@@ -41,6 +41,8 @@ pub struct IrMetadata {
     pub source_index: Option<usize>,
     /// Source line/position info.
     pub source_position: Option<usize>,
+    /// Whether this node was produced by instruction fusion.
+    pub fused: bool,
 }
 
 /// The IR graph — a dataflow representation of a program.

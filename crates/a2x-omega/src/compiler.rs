@@ -80,6 +80,7 @@ fn build_ir(program: &SigmaProgram) -> Result<IrGraph, CompileError> {
             metadata: IrMetadata {
                 source_index: Some(i),
                 source_position: Some(i),
+                fused: false,
             },
         };
 

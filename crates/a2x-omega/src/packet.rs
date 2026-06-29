@@ -25,7 +25,7 @@ pub const OFFSET_D: usize = 1024 + 4096 + 8192; // 13312
 pub const SIZE_I: usize = 1024;
 pub const SIZE_C: usize = 4096;
 pub const SIZE_P: usize = 8192;
-pub const SIZE_D: usize = 16384;
+pub const SIZE_D: usize = 16484;
 pub const TOTAL_DIM: usize = OFFSET_D + SIZE_D; // 29796
 
 impl<const N: usize> OmegaPacket<N> {

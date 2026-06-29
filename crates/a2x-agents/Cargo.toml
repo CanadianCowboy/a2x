@@ -15,6 +15,9 @@ a2x-bus = { path = "../a2x-bus" }
 a2x-ccs = { path = "../a2x-ccs" }
 tracing = { workspace = true }
 
+[dev-dependencies]
+a2x-omega = { path = "../a2x-omega" }
+
 [lib]
 name = "a2x_agents"
 path = "src/lib.rs"
