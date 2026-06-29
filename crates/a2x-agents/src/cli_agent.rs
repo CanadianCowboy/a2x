@@ -81,9 +81,7 @@ impl CliAgent {
     pub fn is_command_allowed(&self, command: &str) -> bool {
         match &self.sandbox {
             SandboxMode::None => true,
-            SandboxMode::CommandFilter(allowed) => {
-                allowed.iter().any(|c| c == command)
-            }
+            SandboxMode::CommandFilter(allowed) => allowed.iter().any(|c| c == command),
             SandboxMode::Container | SandboxMode::Vm => {
                 // Future: check against container/VM allowlist
                 true
@@ -107,11 +105,9 @@ impl CliAgent {
             .lock()
             .map_err(|e| AgentError::TransportError(e.to_string()))?;
         vm.load(program);
-        let status = vm.run().map_err(|e| {
-            AgentError::ProgramCrash {
-                program_id: pid,
-                reason: e.to_string(),
-            }
+        let status = vm.run().map_err(|e| AgentError::ProgramCrash {
+            program_id: pid,
+            reason: e.to_string(),
         })?;
 
         if start.elapsed() > self.max_execution_time {
@@ -193,10 +189,7 @@ mod tests {
 
     #[test]
     fn test_command_allowed_none_sandbox() {
-        let agent = CliAgent::with_sandbox(
-            AgentId::new("cli-2"),
-            SandboxMode::None,
-        );
+        let agent = CliAgent::with_sandbox(AgentId::new("cli-2"), SandboxMode::None);
         assert!(agent.is_command_allowed("rm"));
         assert!(agent.is_command_allowed("anything"));
     }

@@ -58,11 +58,9 @@ impl Orchestrator {
             .lock()
             .map_err(|e| AgentError::TransportError(e.to_string()))?;
         vm.load(program);
-        let status = vm.run().map_err(|e| {
-            AgentError::ProgramCrash {
-                program_id: pid,
-                reason: e.to_string(),
-            }
+        let status = vm.run().map_err(|e| AgentError::ProgramCrash {
+            program_id: pid,
+            reason: e.to_string(),
         })?;
 
         let mut lc = self
@@ -125,7 +123,11 @@ impl Agent for Orchestrator {
     }
 
     fn capabilities(&self) -> Vec<Capability> {
-        vec![Capability::Execute, Capability::Custom("schedule".into()), Capability::Custom("plan".into())]
+        vec![
+            Capability::Execute,
+            Capability::Custom("schedule".into()),
+            Capability::Custom("plan".into()),
+        ]
     }
 }
 

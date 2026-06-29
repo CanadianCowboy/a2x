@@ -1,0 +1,13 @@
+chore fmt cargo fmt -p a2x-agents
+
+Resolved three carry-over uncommitted modifications on master after the
+Phase 2 ff-merge. The drift was mechanical fmt-only: cargo fmt collapsed
+multi-line match arms and method-arg closures in cli_agent.rs,
+orchestrator.rs, and parse.rs.
+
+Project standard R7 (format) requires cargo fmt to pass at any release
+commit. v0.2.0 is force-retagged below onto this fmt-clean commit (the
+tag previously pointed at the prior commit, which had the same code
+content but a separately-staged working tree on the developer machine).
+
+No code logic changed.
