@@ -182,8 +182,9 @@ fn parse_field_content(tokens: &[Token]) -> Result<(Vec<Token>, Vec<String>, usi
             Token::FieldSeparator => break,
             Token::Boundary(_) => break,
             Token::ProtocolId => break,
-            Token::Label(s) if (s == "I" || s == "C" || s == "P" || s == "D")
-                && matches!(tokens.get(i + 1), Some(Token::Label(colon)) if colon == ":") =>
+            Token::Label(s)
+                if (s == "I" || s == "C" || s == "P" || s == "D")
+                    && matches!(tokens.get(i + 1), Some(Token::Label(colon)) if colon == ":") =>
             {
                 // New field prefix (e.g. "I:") — stop here
                 break;

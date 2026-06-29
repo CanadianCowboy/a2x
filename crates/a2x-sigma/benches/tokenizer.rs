@@ -5,12 +5,11 @@
 // Targets:
 //   - Tokenizer throughput > 1M packets/sec
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use a2x_sigma::tokenizer::lex;
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 /// The standard anomaly-scan packet used throughout the codebase tests.
-const ANOMALY_SCAN: &str =
-    "⟦Σ∞⟧⟬I:⚡✣⩫ ∷ C:⟚⟞⟨sys⟩ ∷ P:⥁⤒⤈ ∷ D:⌮⌳⌱⟭";
+const ANOMALY_SCAN: &str = "⟦Σ∞⟧⟬I:⚡✣⩫ ∷ C:⟚⟞⟨sys⟩ ∷ P:⥁⤒⤈ ∷ D:⌮⌳⌱⟭";
 
 fn bench_tokenize_anomaly_scan(c: &mut Criterion) {
     c.bench_function("tokenize_anomaly_scan", |b| {
@@ -20,9 +19,7 @@ fn bench_tokenize_anomaly_scan(c: &mut Criterion) {
 
 fn bench_tokenize_1k_packets(c: &mut Criterion) {
     let input = ANOMALY_SCAN.repeat(1000);
-    c.bench_function("tokenize_1k_packets", |b| {
-        b.iter(|| lex(black_box(&input)))
-    });
+    c.bench_function("tokenize_1k_packets", |b| b.iter(|| lex(black_box(&input))));
 }
 
 fn bench_tokenize_10k_packets(c: &mut Criterion) {

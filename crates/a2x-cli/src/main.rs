@@ -123,12 +123,25 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Command::Run { program, stdin, file } => cmd_run(program, stdin, file),
-        Command::Parse { program, stdin, file, verbose } => {
-            cmd_parse(program, stdin, file, verbose)
-        }
-        Command::Agents { type_filter, capability } => cmd_agents(type_filter, capability),
-        Command::Probe { agent_id, agent_type } => cmd_probe(&agent_id, &agent_type),
+        Command::Run {
+            program,
+            stdin,
+            file,
+        } => cmd_run(program, stdin, file),
+        Command::Parse {
+            program,
+            stdin,
+            file,
+            verbose,
+        } => cmd_parse(program, stdin, file, verbose),
+        Command::Agents {
+            type_filter,
+            capability,
+        } => cmd_agents(type_filter, capability),
+        Command::Probe {
+            agent_id,
+            agent_type,
+        } => cmd_probe(&agent_id, &agent_type),
     }
 }
 
@@ -140,8 +153,8 @@ fn cmd_run(program: Option<String>, stdin: bool, file: Option<String>) -> Result
     let source = read_input(program, stdin, file).context("failed to read program input")?;
 
     // Parse the Σ∞ source into a SigmaProgram
-    let mut sigma_program = parse_program(&source)
-        .map_err(|e| anyhow::anyhow!("failed to parse Σ∞ program: {}", e))?;
+    let mut sigma_program =
+        parse_program(&source).map_err(|e| anyhow::anyhow!("failed to parse Σ∞ program: {}", e))?;
     sigma_program.compute_id();
 
     let instruction_count = sigma_program.len();
@@ -184,8 +197,8 @@ fn cmd_parse(
     let source = read_input(program, stdin, file).context("failed to read parse input")?;
 
     // Parse and compute ID
-    let mut sigma_program = parse_program(&source)
-        .map_err(|e| anyhow::anyhow!("failed to parse Σ∞ program: {}", e))?;
+    let mut sigma_program =
+        parse_program(&source).map_err(|e| anyhow::anyhow!("failed to parse Σ∞ program: {}", e))?;
     sigma_program.compute_id();
 
     let count = sigma_program.len();
@@ -325,7 +338,10 @@ fn cmd_probe(agent_id: &str, agent_type: &str) -> Result<()> {
             let agent = CcsAgent::new(id);
             agent.state_summary()
         }
-        other => anyhow::bail!("unknown agent type '{}'. Valid types: orchestrator, cli, llm, ccs", other),
+        other => anyhow::bail!(
+            "unknown agent type '{}'. Valid types: orchestrator, cli, llm, ccs",
+            other
+        ),
     };
 
     match snapshot {
@@ -360,11 +376,7 @@ fn cmd_probe(agent_id: &str, agent_type: &str) -> Result<()> {
 // ---------------------------------------------------------------------------
 
 /// Read program input from one of three sources: direct argument, stdin, or file.
-fn read_input(
-    direct: Option<String>,
-    stdin_flag: bool,
-    file: Option<String>,
-) -> Result<String> {
+fn read_input(direct: Option<String>, stdin_flag: bool, file: Option<String>) -> Result<String> {
     if let Some(s) = direct {
         return Ok(s);
     }
@@ -483,7 +495,10 @@ mod tests {
 
     #[test]
     fn test_parse_agent_type_known() {
-        assert_eq!(parse_agent_type("orchestrator").unwrap(), AgentType::Orchestrator);
+        assert_eq!(
+            parse_agent_type("orchestrator").unwrap(),
+            AgentType::Orchestrator
+        );
         assert_eq!(parse_agent_type("orch").unwrap(), AgentType::Orchestrator);
         assert_eq!(parse_agent_type("cli").unwrap(), AgentType::Cli);
         assert_eq!(parse_agent_type("llm").unwrap(), AgentType::Llm);

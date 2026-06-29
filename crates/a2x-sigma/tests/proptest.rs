@@ -13,10 +13,10 @@ use a2x_sigma::context::ContextOp;
 use a2x_sigma::data::DataOp;
 use a2x_sigma::intent::IntentOp;
 use a2x_sigma::packet::{ContextField, DataField, IntentField, PlanField, SigmaPacket};
-use a2x_sigma::plan::PlanOp;
-use a2x_sigma::tokenizer::lex;
 use a2x_sigma::parser::parse;
+use a2x_sigma::plan::PlanOp;
 use a2x_sigma::serialize_packet;
+use a2x_sigma::tokenizer::lex;
 
 // ---------------------------------------------------------------------------
 // Strategies: generate random valid operators
@@ -104,26 +104,24 @@ fn sigma_packet_strategy() -> impl Strategy<Value = SigmaPacket> {
         proptest::collection::vec(data_op_strategy(), 0..4),
         proptest::collection::vec(label_strategy(), 0..2),
     )
-        .prop_map(
-            |(intent_ops, context_ops, plan_ops, data_ops, labels)| {
-                let mut pkt = SigmaPacket::new();
-                pkt.intent = IntentField {
-                    operators: intent_ops,
-                };
-                pkt.context = ContextField {
-                    operators: context_ops,
-                    labels,
-                };
-                pkt.plan = PlanField {
-                    operators: plan_ops,
-                };
-                pkt.data = DataField {
-                    operators: data_ops,
-                    payload: Vec::new(),
-                };
-                pkt
-            },
-        )
+        .prop_map(|(intent_ops, context_ops, plan_ops, data_ops, labels)| {
+            let mut pkt = SigmaPacket::new();
+            pkt.intent = IntentField {
+                operators: intent_ops,
+            };
+            pkt.context = ContextField {
+                operators: context_ops,
+                labels,
+            };
+            pkt.plan = PlanField {
+                operators: plan_ops,
+            };
+            pkt.data = DataField {
+                operators: data_ops,
+                payload: Vec::new(),
+            };
+            pkt
+        })
 }
 
 // ---------------------------------------------------------------------------

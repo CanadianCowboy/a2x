@@ -18,9 +18,9 @@ pub mod tokenizer;
 // Re-export key types for convenience
 pub use context::ContextOp;
 pub use data::DataOp;
+pub use error::{LexError, ParseError};
 pub use intent::IntentOp;
 pub use packet::{ContextField, DataField, IntentField, PlanField, SigmaPacket};
-pub use error::{LexError, ParseError};
 pub use parser::parse;
 pub use plan::PlanOp;
 pub use program::{ProgramMetadata, ProgramRef, SigmaProgram};
