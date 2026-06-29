@@ -6,12 +6,20 @@
 // Phase 2 deterministic semantics:
 // - attention *= 0.95 (element-wise)
 // - temporal: roll right by 1; temporal[0] decremented by dt.as_secs_f32()
-// - belief: Blake3-seeded LCG over scratch[0..8] perturbs each belief[i]
+// - belief: Blake3-seeded LCG over a dedicated `lcg_state: [f32; 8]` field
+//           perturbs each belief[i]
 // - WorldGraph metadata.access_count += 1 for every node
 //
 // Determinism: no wall-clock reads. All randomness in belief-drift derives
-// from `dt` and the current `scratch[0..8]` LCG state. Two runs of the same
-// VM with identical step sequences + dt values produce byte-identical state.
+// from `dt` and the current LCG state. Two runs of the same VM with
+// identical step sequences + dt values produce byte-identical state.
+//
+// Phase 2.LCG HOIST: the LCG state was previously stored in
+// `state.scratch[0..8]` (implicit aliasing with general-purpose scratch
+// storage). It now lives in a dedicated StateField struct field exposed
+// through `read_lcg_state` / `write_lcg_state` trait methods. This removes
+// the prior zero-padding behavior: `lcg_state` is always exactly 8 floats,
+// so the 32-byte Blake3 input is built directly without min()/range guards.
 
 use std::time::Duration;
 
@@ -23,7 +31,7 @@ use blake3::Hasher;
 pub const ATTENTION_DECAY: f32 = 0.95;
 /// Drift rate applied to `belief` from the Blake3-seeded LCG state.
 pub const BELIEF_DRIFT_EPSILON: f32 = 0.001;
-/// Number of f32 slots in `scratch` that carry the 32-byte LCG state.
+/// Number of f32 slots in the dedicated `lcg_state` field.
 const LCG_STATE_SLOTS: usize = 8;
 const F32_BYTES: usize = 4;
 
@@ -32,7 +40,7 @@ const F32_BYTES: usize = 4;
 /// Pipeline (in order):
 ///   1. Decay attention (every f32 *= 0.95).
 ///   2. Shift temporal (roll right + decrement slot[0] by `dt`).
-///   3. Drift belief via Blake3-seeded LCG state in `scratch[0..8]`.
+///   3. Drift belief via Blake3-seeded LCG state in `state.lcg_state`.
 ///   4. Bump `metadata.access_count` for every node in the WorldGraph.
 pub fn evolve(
     graph: &mut dyn WorldGraph,
@@ -68,24 +76,28 @@ fn shift_temporal(state: &mut dyn StateField, dt: Duration) -> Result<(), Evolve
     write(state, "temporal", &next)
 }
 
-/// Drive `belief` via a Blake3-seeded LCG state stored in `scratch[0..8]`.
+/// Drive `belief` via a Blake3-seeded LCG state stored in the
+/// StateField's dedicated `lcg_state: [f32; 8]` field.
 ///
 /// Per call:
 ///   digest = blake3(lcg_state_bytes)            // 32-byte output
-///   new_scratch[slot] = safe_f32_from_bits(digest[slot*4..slot*4+4])
+///   new_lcg[slot] = safe_f32_from_bits(digest[slot*4..slot*4+4])
 ///     (NaN-safe: bit-pattern that decodes NaN is replaced with 0)
-///   belief[i] += new_scratch[i % 8] * BELIEF_DRIFT_EPSILON
+///   belief[i] += new_lcg[i % 8] * BELIEF_DRIFT_EPSILON
+///   state.lcg_state <- new_lcg (cursor advances for next evolve)
 fn drift_belief(state: &mut dyn StateField) -> Result<(), EvolveError> {
-    let scratch = read(state, "scratch")?;
-    let lcg_state_bytes = lcg_state_as_bytes(&scratch);
+    let prior_lcg = state
+        .read_lcg_state()
+        .map_err(|e| EvolveError::StateError(e.to_string()))?;
+    let lcg_state_bytes = lcg_state_bytes_from_array(&prior_lcg);
     let digest = {
         let mut hasher = Hasher::new();
         hasher.update(&lcg_state_bytes);
         hasher.finalize().as_bytes().to_vec()
     };
 
-    let mut new_scratch = scratch.clone();
-    for slot in 0..LCG_STATE_SLOTS.min(new_scratch.len()) {
+    let mut new_lcg: [f32; 8] = [0.0; 8];
+    for (slot, new_slot) in new_lcg.iter_mut().enumerate() {
         let bytes_idx = slot * F32_BYTES;
         let bits = u32::from_le_bytes([
             digest[bytes_idx],
@@ -93,15 +105,17 @@ fn drift_belief(state: &mut dyn StateField) -> Result<(), EvolveError> {
             digest[bytes_idx + 2],
             digest[bytes_idx + 3],
         ]);
-        new_scratch[slot] = safe_f32_from_bits(bits);
+        *new_slot = safe_f32_from_bits(bits);
     }
-    write(state, "scratch", &new_scratch)?;
+    state
+        .write_lcg_state(&new_lcg)
+        .map_err(|e| EvolveError::StateError(e.to_string()))?;
 
     let belief = read(state, "belief")?;
     let mut new_belief = belief.clone();
     for (i, v) in new_belief.iter_mut().enumerate() {
         let slot = i % LCG_STATE_SLOTS;
-        *v += new_scratch[slot] * BELIEF_DRIFT_EPSILON;
+        *v += new_lcg[slot] * BELIEF_DRIFT_EPSILON;
     }
     write(state, "belief", &new_belief)
 }
@@ -141,13 +155,12 @@ fn write(state: &mut dyn StateField, region: &str, data: &[f32]) -> Result<(), E
         .map_err(|e| EvolveError::StateError(e.to_string()))
 }
 
-/// Reinterpret the first `LCG_STATE_SLOTS` f32 slots of `scratch` as a
-/// 32-byte Blake3 input buffer. Returns a fixed-size array regardless of the
-/// scratch length — excess slots become zero-padding if scratch is short.
-fn lcg_state_as_bytes(scratch: &[f32]) -> [u8; 32] {
+/// Reinterpret the 8 f32 slots of `lcg_state` as a 32-byte Blake3 input
+/// buffer. Always exactly 32 bytes — no zero-padding (the LCG state is
+/// always 8 floats by contract after Phase 2.LCG hoist).
+fn lcg_state_bytes_from_array(lcg_state: &[f32; 8]) -> [u8; 32] {
     let mut buf = [0u8; 32];
-    let slots_used = LCG_STATE_SLOTS.min(scratch.len());
-    for (slot, slot_val) in scratch.iter().enumerate().take(slots_used) {
+    for (slot, slot_val) in lcg_state.iter().enumerate() {
         let slot_bytes = slot_val.to_le_bytes();
         let start = slot * F32_BYTES;
         buf[start..start + F32_BYTES].copy_from_slice(&slot_bytes);
@@ -297,33 +310,42 @@ mod tests {
             b1, b2,
             "two fresh VMs running evolve should produce identical belief"
         );
-        let s1 = sf1.read_region("scratch").unwrap().to_vec();
-        let s2 = sf2.read_region("scratch").unwrap().to_vec();
+        // Phase 2.LCG: LCG state lives in a dedicated field, not scratch.
+        let lcg1 = sf1.read_lcg_state().unwrap();
+        let lcg2 = sf2.read_lcg_state().unwrap();
         assert_eq!(
-            s1, s2,
-            "scratch LCG state should be deterministic across separate runs"
+            lcg1, lcg2,
+            "lcg_state should be deterministic across separate runs"
         );
+        // scratch is untouched after Phase 2.LCG hoist (still all zeros).
+        let scratch1 = sf1.read_region("scratch").unwrap().to_vec();
+        let scratch2 = sf2.read_region("scratch").unwrap().to_vec();
+        assert_eq!(scratch1, scratch2);
+        assert!(scratch1.iter().all(|v| *v == 0.0));
     }
 
     #[test]
     fn test_evolve_lcg_state_advances() {
         let (mut wg, mut sf) = setup();
-        // Initial scratch is all zeros
-        let before: Vec<f32> = sf.read_region("scratch").unwrap().to_vec();
+        // Initial lcg_state is all zeros (verified by FlatStateField::new zero-init).
+        let before = sf.read_lcg_state().unwrap();
         assert!(before.iter().all(|v| *v == 0.0));
         evolve(&mut wg, &mut sf, Duration::ZERO).unwrap();
-        let after = sf.read_region("scratch").unwrap().to_vec();
-        // After first evolve, scratch[0..8] should be blake3(zero-bytes) reinterpreted.
+        let after = sf.read_lcg_state().unwrap();
+        // After first evolve, lcg_state[0..8] should be blake3(zero-bytes) reinterpreted.
         // Very high probability that some slot became non-zero (deterministic bits).
-        let non_zero_slots = after[..LCG_STATE_SLOTS]
-            .iter()
-            .filter(|v| **v != 0.0)
-            .count();
+        let non_zero_slots = after.iter().filter(|v| **v != 0.0).count();
         assert!(
             non_zero_slots >= 1,
             "expected at least one LCG slot to be non-zero after blake3(zeros); got {} of {}",
             non_zero_slots,
             LCG_STATE_SLOTS
+        );
+        // scratch is still untouched (no zero-pad behavior needed).
+        let scratch_after = sf.read_region("scratch").unwrap().to_vec();
+        assert!(
+            scratch_after.iter().all(|v| *v == 0.0),
+            "scratch should remain zero because Phase 2.LCG hoist moved LCG off scratch"
         );
     }
 

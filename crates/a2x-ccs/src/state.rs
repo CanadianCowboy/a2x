@@ -19,9 +19,16 @@ pub struct StateRegion {
 /// to CPU registers + stack. It holds named regions backed by a flat `Vec<f32>`.
 ///
 /// Default total size: 1024 f32 values.
+///
+/// Phase 2.LCG: also carries an `lcg_state: [f32; 8]` field — a
+/// first-class 8-tuple used by the Evolve operator for its Blake3-seeded LCG.
+/// Hoisted out of `scratch[0..8]` so the LCG cursor no longer aliases
+/// general-purpose scratch storage. The lcg_state field is zero-initialized
+/// in `new()` and `default_size()`.
 pub struct FlatStateField {
     data: Vec<f32>,
     regions: HashMap<String, StateRegion>,
+    pub lcg_state: [f32; 8],
 }
 
 impl FlatStateField {
@@ -30,6 +37,7 @@ impl FlatStateField {
         FlatStateField {
             data: vec![0.0; total_len],
             regions: HashMap::new(),
+            lcg_state: [0.0; 8],
         }
     }
 
@@ -119,6 +127,15 @@ impl StateField for FlatStateField {
     fn raw_data(&self) -> &[f32] {
         &self.data
     }
+
+    fn read_lcg_state(&self) -> Result<[f32; 8], CoreError> {
+        Ok(self.lcg_state)
+    }
+
+    fn write_lcg_state(&mut self, state: &[f32; 8]) -> Result<(), CoreError> {
+        self.lcg_state = *state;
+        Ok(())
+    }
 }
 
 /// Initialize a StateField with the standard default regions.
@@ -151,6 +168,18 @@ mod tests {
         let sf = FlatStateField::default_size();
         assert_eq!(sf.total_len(), 1024);
         assert_eq!(sf.raw_data().len(), 1024);
+        // Phase 2.LCG: lcg_state is zero-initialized on construction.
+        assert_eq!(sf.lcg_state, [0.0; 8]);
+        assert_eq!(sf.read_lcg_state().unwrap(), [0.0; 8]);
+    }
+
+    #[test]
+    fn test_lcg_state_round_trip() {
+        let mut sf = FlatStateField::default_size();
+        let new_state: [f32; 8] = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
+        sf.write_lcg_state(&new_state).unwrap();
+        assert_eq!(sf.lcg_state, new_state);
+        assert_eq!(sf.read_lcg_state().unwrap(), new_state);
     }
 
     #[test]

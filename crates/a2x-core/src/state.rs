@@ -67,4 +67,16 @@ pub trait StateField: Send + Sync {
 
     /// Return raw access to the underlying flat data.
     fn raw_data(&self) -> &[f32];
+
+    /// Read the LCG (linear congruential generator) state used by the Evolve
+    /// operator for deterministic time-stepping. Returns a fixed-size 8-tuple
+    /// — implementations are required to support this exactly. Phase 2.LCG
+    /// hoisted this from `state.scratch[0..8]` to a dedicated accessor to
+    /// avoid aliasing with general-purpose scratch uses.
+    fn read_lcg_state(&self) -> Result<[f32; 8], CoreError>;
+
+    /// Write the LCG state. The input must be exactly 8 floats — the size is
+    /// a hard contract (Blake3 hash output is 32 bytes = 8 * f32). Phase
+    /// 2.LCG hoisted this from `state.scratch[0..8]`.
+    fn write_lcg_state(&mut self, state: &[f32; 8]) -> Result<(), CoreError>;
 }
