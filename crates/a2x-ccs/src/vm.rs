@@ -46,6 +46,9 @@ pub struct VmLimits {
     pub max_stack_depth: usize,
     pub max_steps: usize,
     pub evolve_dt: Duration,
+    /// Phase 2.D: how many recent MemoryTrace entries the REFLECT operator
+    /// summarizes when it builds a self-model node.
+    pub reflect_window: usize,
 }
 
 impl Default for VmLimits {
@@ -54,6 +57,7 @@ impl Default for VmLimits {
             max_stack_depth: 256,
             max_steps: 10_000,
             evolve_dt: Duration::from_millis(10),
+            reflect_window: crate::operators::reflect::REFLECT_DEFAULT_WINDOW,
         }
     }
 }
@@ -70,6 +74,10 @@ pub struct CcsVm {
     pub safety: SafetyConstraints,
     pub limits: VmLimits,
     started_at: Option<std::time::Instant>,
+    /// Phase 2.D: NodeId of the most recent reflect self-model node (the one
+    /// carrying the `__last_reflect` label). Phase 2.E's plan operator reads
+    /// this to bias action selection toward what reflect just summarized.
+    pub last_reflect: Option<NodeId>,
 }
 
 /// Bundle of decoded instruction data, extracted without borrowing `self`.
@@ -102,6 +110,7 @@ impl CcsVm {
             safety: SafetyConstraints::default(),
             limits: VmLimits::default(),
             started_at: None,
+            last_reflect: None,
         }
     }
 
@@ -485,7 +494,16 @@ impl CcsVm {
             }
             Opcode::Reflect => {
                 debug!("REFL operator");
-                let _update = reflect::reflect(self.memory_trace.len());
+                // Phase 2.D: route reflect to the real self-model builder.
+                // Result is retained on `self.last_reflect` so Phase 2.E's
+                // PLAN operator can read it without re-querying the graph.
+                let result = reflect::reflect(
+                    &self.memory_trace,
+                    &mut self.world_graph,
+                    self.limits.reflect_window,
+                )
+                .map_err(|e| VmError::Other(e.to_string()))?;
+                self.last_reflect = Some(result.self_model_id);
             }
             Opcode::Plan => {
                 debug!("PLAN operator");
