@@ -61,7 +61,7 @@ pub trait DecompileToSigma: Sized {
 /// Map a standard Opcode to its canonical Σ∞ IntentOp (as chosen by
 /// `compiler.rs::build_ir`). Branch/Jump/Call/Return/Custom(_) have no
 /// canonical mapping → returns `None` and the decoder errors out.
-fn opcode_to_intent(op: Opcode) -> Option<IntentOp> {
+pub(crate) fn opcode_to_intent(op: Opcode) -> Option<IntentOp> {
     match op {
         Opcode::Bind => Some(IntentOp::Synthesis),        // ✣
         Opcode::Differentiate => Some(IntentOp::Split),   // ⩨

@@ -12,6 +12,7 @@ description = "Ω compiled latent representation: tensor packets, compiler pipel
 default = []
 serde = ["dep:serde", "a2x-core/serde", "a2x-sigma/serde"]
 ndarray = ["dep:ndarray"]
+learned = []
 
 [dependencies]
 a2x-core = { path = "../a2x-core" }
@@ -19,6 +20,7 @@ a2x-sigma = { path = "../a2x-sigma" }
 serde = { workspace = true, optional = true }
 blake3 = "1"
 ndarray = { workspace = true, optional = true }
+
 
 [lib]
 name = "a2x_omega"

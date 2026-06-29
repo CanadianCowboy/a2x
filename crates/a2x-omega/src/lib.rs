@@ -6,11 +6,19 @@
 pub mod bridge;
 pub mod compiler;
 pub mod decoder;
+#[cfg(feature = "learned")]
+pub mod environment;
 pub mod error;
 pub mod ir;
+#[cfg(feature = "learned")]
+pub mod learned_decoder;
+#[cfg(feature = "learned")]
+pub mod learned_encoder;
 pub mod packet;
 pub mod passes;
 pub mod program;
+#[cfg(feature = "learned")]
+pub mod training;
 
 // Re-export key types
 pub use bridge::Bridge;

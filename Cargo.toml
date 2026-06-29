@@ -28,14 +28,9 @@ serde = { version = "1", features = ["derive"] }
 petgraph = "0.7"
 ndarray = "0.16"
 tokio = { version = "1", features = ["full"] }
-# Future (uncomment as needed):
 clap = { version = "4", features = ["derive"] }
-# tracing = "0.1"
 tracing = "0.1"
-# thiserror = "2"
 anyhow = "1"
-# serde_json = "1"
-# bincode = "2"
 blake3 = "1"
 criterion = "0.5"
 
