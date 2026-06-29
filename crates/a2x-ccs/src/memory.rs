@@ -193,10 +193,16 @@ impl MemoryTrace for VecMemoryTrace {
         }
         if self.compressed {
             // New entry invalidates any pre-computed RLE structure (a fresh
-            // run may form with neighbours, or a run may split). Drop
-            // compression metadata; the trace is again in logical mode
-            // until the next explicit compress().
+            // run may form with neighbours, or a run may split). Drop ALL
+            // compression metadata — RLE runs, snapshot dedup pool, and the
+            // cached stats — so the trace is in a fully-consistent logical
+            // mode until the next explicit compress() rebuilds everything.
+            // Snapshot pool staleness was the canonical example of why
+            // "compressed: false" alone is insufficient: the pool still
+            // reflects pre-push contents even though entries[] has grown.
             self.rle_runs.clear();
+            self.snapshot_pool.clear();
+            self.snapshot_lookup.clear();
             self.compressed = false;
             self.last_compression = None;
         }
@@ -558,11 +564,45 @@ mod tests {
         trace.compress().unwrap();
         assert!(trace.compressed);
         assert_eq!(trace.rle_runs().len(), 1);
+        assert_eq!(trace.distinct_snapshots(), 1);
         // After any push post-compress, trace is back in logical mode.
         trace.push(make_entry()).unwrap();
         assert!(!trace.compressed);
         assert!(trace.rle_runs().is_empty());
         assert!(trace.compression_stats().is_none());
+        // Snapshot pool also cleared so the dedup table doesn't lie about
+        // contents that no longer exist for entries that did exist pre-push.
+        assert!(trace.distinct_snapshots() == 0);
+        assert!(trace.snapshot_pool().is_empty());
+    }
+
+    #[test]
+    fn test_post_compress_push_clears_pool_then_recompress_rebuilds() {
+        // After post-compress push, even if the new entry's snapshot_byte
+        // pattern happens to match a previously-pooled payload, the pool
+        // is cleared. The next compress() rebuilds it from current
+        // entries[] — no caching of stale pool across pushes.
+        let mut trace = VecMemoryTrace::new(100);
+        for _ in 0..10 {
+            trace.push(make_entry()).unwrap();
+        }
+        trace.compress().unwrap();
+        assert_eq!(trace.distinct_snapshots(), 1);
+        // Push a new entry whose snapshot matches the old pool's payload.
+        let mut e = make_entry();
+        e.ip = 99; // different ip ensures RLE doesn't reform across push
+        e.state_snapshot_bytes = vec![0u8; 64]; // matches previous pool
+        trace.push(e).unwrap();
+        // Pool must have been cleared (stale data would otherwise leak).
+        assert_eq!(trace.distinct_snapshots(), 0);
+        // Re-compress rebuilds pool from current entries[]: 2 physical
+        // entries (1 collapsed rep + 1 new push) with differ by ip, so
+        // no RLE run forms and pool is rebuilt with the single unique
+        // snapshot payload (both share `vec![0u8; 64]`).
+        trace.compress().unwrap();
+        assert_eq!(trace.distinct_snapshots(), 1);
+        assert_eq!(trace.rle_runs().len(), 0);
+        assert_eq!(trace.entries_physical_len(), 2);
     }
 
     #[test]

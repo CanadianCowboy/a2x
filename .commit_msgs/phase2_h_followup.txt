@@ -1,0 +1,19 @@
+refactor(ccs): tighten Phase 2.H follow-up test + comment
+
+Reviewer-flagged polish after the Phase 2.H snapshot pool staleness fix:
+
+* Renamed `test_post_compress_push_recomputes_pool_invocably` ->
+  `test_post_compress_push_clears_pool_then_recompress_rebuilds`.
+  The prior name used a non-English word ("invocably") and obscured the
+  test's two-stage intent (pre-recompression pool-clear +
+  post-recompression pool-rebuild).
+
+* Replaced the misleading in-test comment `// 11 entries with one
+  different` (counting pushes, not entries[]) with a comment that
+  describes the actual physical layout: 2 entries[] slots post-
+  recompress (1 RLE representative + 1 new push), differing by ip,
+  so no RLE run forms and the single shared snapshot collapses the
+  pool back to 1.
+
+No logic changes. cargo test + clippy + fmt all green; 17 memory tests
+in a2x-ccs pass cleanly.
