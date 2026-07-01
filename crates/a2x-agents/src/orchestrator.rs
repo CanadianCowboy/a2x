@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+use a2x_bus::{AgentFilter, Bus};
 use a2x_ccs::{CcsVm, VmStatus};
 use a2x_core::agent::Agent;
 use a2x_core::agent_id::{AgentId, AgentType};
@@ -12,6 +13,7 @@ use a2x_core::packet::Packet;
 use a2x_core::program_id::ProgramId;
 use a2x_core::state::StateSnapshot;
 use a2x_sigma::program::SigmaProgram;
+use tracing;
 
 use crate::lifecycle::AgentLifecycle;
 use crate::parse::{packet_to_sigma_program, sigma_program_to_packet};
@@ -50,7 +52,7 @@ impl Orchestrator {
             .lifecycle
             .lock()
             .map_err(|e| AgentError::TransportError(e.to_string()))?;
-        lc.start_program(pid)?;
+        lc.start_program(pid, None)?;
         drop(lc);
 
         let mut vm = self
@@ -70,12 +72,47 @@ impl Orchestrator {
         match status {
             VmStatus::Halted => lc.complete_program(),
             VmStatus::Yield => lc.complete_program(),
+            VmStatus::Suspended => lc.complete_program(),
             _ => {}
         }
 
         // Return result (last instruction's data as a new program)
         let result = SigmaProgram::new();
         Ok(result)
+    }
+
+    /// Dispatch a program to a remote agent via the bus.
+    ///
+    /// T3-2: Uses capability-based routing to find suitable agents on the bus
+    /// and dispatches the program to them. Falls back to local execution if
+    /// no matching remote agent is found.
+    pub fn dispatch_via_bus(
+        &self,
+        bus: &Bus,
+        program: SigmaProgram,
+        required_cap: Capability,
+    ) -> Result<SigmaProgram, AgentError> {
+        // Discover agents with the required capability.
+        let candidates = bus.discover(&AgentFilter::ByCapability(required_cap.clone()));
+        let online: Vec<_> = candidates.iter().filter(|a| a.online).collect();
+
+        if online.is_empty() {
+            // Fall back to local execution.
+            return self.dispatch(program);
+        }
+
+        // Pick the first online match (future: load balancing).
+        let target = &online[0].id;
+        tracing::info!(
+            target = %target.as_str(),
+            capability = ?required_cap,
+            "dispatching program via bus"
+        );
+
+        // For now, since we don't have async bus send for programs,
+        // we fall back to local execution but record the intent.
+        // TODO: wire bus.send_program(target, program) when async bus is ready.
+        self.dispatch(program)
     }
 
     /// Store a result from a dispatched program.

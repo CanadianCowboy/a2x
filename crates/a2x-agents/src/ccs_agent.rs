@@ -15,8 +15,9 @@ use a2x_core::agent::Agent;
 use a2x_core::agent_id::{AgentId, AgentType};
 use a2x_core::capability::Capability;
 use a2x_core::error::AgentError;
-use a2x_core::graph::WorldGraph;
+use a2x_core::graph::{GraphQuery, WorldGraph};
 use a2x_core::memory::MemoryTrace;
+use a2x_core::node::NodeId;
 use a2x_core::packet::Packet;
 use a2x_core::state::StateSnapshot;
 use a2x_sigma::intent::IntentOp;
@@ -75,11 +76,58 @@ impl CcsAgent {
     }
 
     /// Start the continuous cognitive loop (Evolve + Reflect).
-    /// Phase 0 stub: marks as running but doesn't start a background thread.
+    ///
+    /// Spawns a background thread that continuously calls `tick()` with a
+    /// configurable sleep interval between ticks. The loop runs until
+    /// `stop_cognitive_loop()` is called.
     pub fn start_cognitive_loop(&self) {
-        if let Ok(mut running) = self.running.lock() {
+        {
+            let mut running = self.running.lock().expect("cognitive loop lock poisoned");
+            if *running {
+                return; // Already running.
+            }
             *running = true;
         }
+
+        // Clone Arcs for the background thread.
+        let vm = Arc::clone(&self.vm);
+        let running = Arc::clone(&self.running);
+
+        std::thread::spawn(move || {
+            let tick_interval = std::time::Duration::from_millis(100);
+            loop {
+                // Check if we should keep running.
+                {
+                    let guard = running.lock().expect("cognitive loop lock poisoned");
+                    if !*guard {
+                        break;
+                    }
+                }
+
+                // Build and execute a cognitive-loop program on the VM.
+                {
+                    let mut vm_guard = vm.lock().expect("vm lock poisoned");
+                    let prog = build_cognitive_loop_program();
+                    vm_guard.load(prog);
+                    match vm_guard.run() {
+                        Ok(VmStatus::Halted) | Ok(VmStatus::Yield) | Ok(VmStatus::Suspended) => {
+                            // Tick completed successfully.
+                        }
+                        Ok(VmStatus::Running) => {
+                            tracing::warn!("CCS cognitive loop: program did not halt");
+                        }
+                        Ok(VmStatus::Fault(err)) => {
+                            tracing::error!("CCS cognitive loop fault: {}", err);
+                        }
+                        Err(err) => {
+                            tracing::error!("CCS cognitive loop error: {}", err);
+                        }
+                    }
+                }
+
+                std::thread::sleep(tick_interval);
+            }
+        });
     }
 
     /// Stop the cognitive loop.
@@ -126,6 +174,10 @@ impl CcsAgent {
                     // since we built a fixed-length 3-instruction program
                     // with an implicit HALT at end-of-packet-stream.
                 }
+                Ok(VmStatus::Suspended) => {
+                    // T1-3: suspended VM can be resumed later.
+                    // For tick(), treat as complete.
+                }
                 Ok(VmStatus::Running) => {
                     return Err(AgentError::VmError(
                         "tick program did not halt after run()".into(),
@@ -164,7 +216,7 @@ impl CcsAgent {
                 .map_err(|e| AgentError::VmError(format!("vm mutex poisoned: {}", e)))?;
             vm.load(program);
             match vm.run() {
-                Ok(VmStatus::Halted) | Ok(VmStatus::Yield) => {}
+                Ok(VmStatus::Halted) | Ok(VmStatus::Yield) | Ok(VmStatus::Suspended) => {}
                 Ok(VmStatus::Running) => {
                     return Err(AgentError::VmError(
                         "program did not halt after run()".into(),
@@ -191,10 +243,124 @@ impl CcsAgent {
     }
 
     /// Query the agent's WorldGraph.
-    /// Phase 0 stub: returns an empty result.
-    pub fn query(&self, _query: &str) -> Result<SigmaProgram, AgentError> {
-        // Phase 0 stub — in Phase 2+ this runs graph queries
-        Ok(SigmaProgram::new())
+    ///
+    /// Supports structured query syntax:
+    ///   - "label:<name>" — lookup by label
+    ///   - "neighbors:<id>[:<max_hops>]" — neighbor traversal (default 1 hop)
+    ///   - "similar:<id>[:<threshold>]" — cosine-similarity search (default 0.5)
+    ///   - "relation:<type>" — all nodes with a given relation type
+    ///   - "summary" — node/edge count summary
+    ///   - Anything else: treated as a label query.
+    pub fn query(&self, query_str: &str) -> Result<SigmaProgram, AgentError> {
+        let vm = self
+            .vm
+            .lock()
+            .map_err(|e| AgentError::VmError(format!("vm mutex poisoned: {}", e)))?;
+
+        let result_ids = if let Some(rest) = query_str.strip_prefix("label:") {
+            match vm
+                .world_graph
+                .lookup_label(rest)
+                .map_err(|e| AgentError::VmError(format!("graph error: {}", e)))?
+            {
+                Some(id) => vec![id],
+                None => Vec::new(),
+            }
+        } else if let Some(rest) = query_str.strip_prefix("neighbors:") {
+            let parts: Vec<&str> = rest.split(':').collect();
+            let src_id = parts[0]
+                .parse::<u64>()
+                .map_err(|_| AgentError::VmError(format!("invalid node id: {}", parts[0])))?;
+            let max_hops = parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(1usize);
+            vm.world_graph
+                .query(&GraphQuery::Neighbors {
+                    node: NodeId::new(src_id),
+                    max_hops,
+                })
+                .map_err(|e| AgentError::VmError(format!("query error: {}", e)))?
+        } else if let Some(rest) = query_str.strip_prefix("similar:") {
+            let parts: Vec<&str> = rest.split(':').collect();
+            let src_id = parts[0]
+                .parse::<u64>()
+                .map_err(|_| AgentError::VmError(format!("invalid node id: {}", parts[0])))?;
+            let threshold = parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(0.5f32);
+            let src_node = vm
+                .world_graph
+                .lookup(NodeId::new(src_id))
+                .map_err(|e| AgentError::VmError(format!("lookup error: {}", e)))?
+                .ok_or_else(|| AgentError::VmError(format!("node {} not found", src_id)))?;
+            vm.world_graph
+                .query(&GraphQuery::BySimilarity {
+                    concept: src_node.concept,
+                    threshold,
+                })
+                .map_err(|e| AgentError::VmError(format!("query error: {}", e)))?
+        } else if let Some(rel_type_str) = query_str.strip_prefix("relation:") {
+            let rel_type = match rel_type_str {
+                "causal" => a2x_core::relation::RelationType::Causal,
+                "spatial" => a2x_core::relation::RelationType::Spatial,
+                "temporal" => a2x_core::relation::RelationType::Temporal,
+                "logical" => a2x_core::relation::RelationType::Logical,
+                "hierarchical" => a2x_core::relation::RelationType::Hierarchical,
+                _ => {
+                    return Err(AgentError::VmError(format!(
+                        "unknown relation type: {}",
+                        rel_type_str
+                    )))
+                }
+            };
+            vm.world_graph
+                .query(&GraphQuery::ByRelation(rel_type))
+                .map_err(|e| AgentError::VmError(format!("query error: {}", e)))?
+        } else if query_str == "summary" {
+            // Return a serialized summary as a program with one data packet.
+            let mut prog = SigmaProgram::new();
+            let mut p = SigmaPacket::new();
+            let summary = format!(
+                "nodes={} edges={}",
+                vm.world_graph.node_count(),
+                vm.world_graph.edge_count()
+            );
+            p.data.payload = summary.into_bytes();
+            prog.push(p);
+            return Ok(prog);
+        } else {
+            // Default: treat as label query.
+            match vm
+                .world_graph
+                .lookup_label(query_str)
+                .map_err(|e| AgentError::VmError(format!("graph error: {}", e)))?
+            {
+                Some(id) => vec![id],
+                None => Vec::new(),
+            }
+        };
+
+        // Encode result NodeIds into a Σ∞ program (one GROUND packet per result).
+        let mut prog = SigmaProgram::new();
+        for id in result_ids {
+            if let Some(node) = vm
+                .world_graph
+                .lookup(id)
+                .map_err(|e| AgentError::VmError(format!("lookup error: {}", e)))?
+            {
+                let mut p = SigmaPacket::new();
+                p.intent.operators.push(IntentOp::Star); // GROUND
+                                                         // Encode concept data as f32 LE bytes.
+                let mut bytes = Vec::new();
+                for f in &node.concept.data {
+                    bytes.extend_from_slice(&f.to_le_bytes());
+                }
+                // Also append NodeId as a label for identifiability.
+                p.context.labels.push(format!("n{}", id.as_u64()));
+                if let Some(ref label) = node.label {
+                    p.context.labels.push(label.clone());
+                }
+                p.data.payload = bytes;
+                prog.push(p);
+            }
+        }
+        Ok(prog)
     }
 
     /// Borrow the persistent VM's observable state (safe read-only peek).
@@ -253,9 +419,44 @@ impl Agent for CcsAgent {
         AgentType::Ccs
     }
 
-    fn execute(&self, _program: Packet) -> Result<Packet, AgentError> {
-        // Phase 0: return empty raw result
-        Ok(Packet::Raw(vec![]))
+    fn execute(&self, program: Packet) -> Result<Packet, AgentError> {
+        // Try to parse the packet as a Σ∞ program text, then run through
+        // the persistent VM. Returns the result as a raw Σ∞ text packet.
+        let text = match &program {
+            Packet::Raw(bytes) => String::from_utf8_lossy(bytes).to_string(),
+        };
+
+        let sigma_prog = if text.trim().is_empty() {
+            SigmaProgram::new()
+        } else {
+            a2x_sigma::parse_program(&text).unwrap_or_else(|_| SigmaProgram::new())
+        };
+
+        let result = self.run_program(sigma_prog)?;
+
+        // Serialize the result actions as text
+        let output = if result.has_actions() {
+            result
+                .plan_actions
+                .iter()
+                .map(|a| {
+                    format!(
+                        "{}:{:?} priority={:.2}",
+                        a.verb.as_str(),
+                        a.opcode,
+                        a.priority
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        } else {
+            format!(
+                "steps={} graph_size={} trace_len={}",
+                result.steps_executed, result.world_graph_size, result.memory_trace_length
+            )
+        };
+
+        Ok(Packet::Raw(output.into_bytes()))
     }
 
     fn state_summary(&self) -> Option<StateSnapshot> {

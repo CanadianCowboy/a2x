@@ -9,8 +9,9 @@ repository.workspace = true
 description = "CCS cognitive runtime VM: WorldGraph, StateField, MemoryTrace, execution loop"
 
 [features]
-default = []
+default = ["tokio"]
 ndarray = ["dep:ndarray"]
+tokio = ["dep:tokio", "dep:tokio-util"]
 
 [dependencies]
 a2x-core = { path = "../a2x-core" }
@@ -19,6 +20,8 @@ petgraph = { workspace = true }
 ndarray = { workspace = true, optional = true }
 blake3 = { workspace = true }
 tracing = { workspace = true }
+tokio = { workspace = true, optional = true }
+tokio-util = { workspace = true, optional = true }
 
 [lib]
 name = "a2x_ccs"

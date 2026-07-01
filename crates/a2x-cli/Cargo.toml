@@ -21,3 +21,7 @@ clap = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+a2x-ccs = { path = "../a2x-ccs" }
+a2x-gateway = { path = "../a2x-gateway" }

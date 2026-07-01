@@ -409,7 +409,58 @@ impl WorldGraph for PetgraphWorldGraph {
                 .filter(|n| n.concept.cosine_similarity(concept) >= *threshold)
                 .map(|n| n.id)
                 .collect(),
-            GraphQuery::Custom(_) => Vec::new(), // Phase 0 stub
+            GraphQuery::Custom(data) => {
+                // Parse custom query as UTF-8 string with structured syntax:
+                //   "neighbors:<id>[:<max_hops>]"
+                //   "nodes" — all node IDs
+                //   "count" — node count as a singleton list of NodeId(0)
+                let query_str = String::from_utf8_lossy(data);
+                let query_str = query_str.trim();
+
+                if let Some(rest) = query_str.strip_prefix("neighbors:") {
+                    let parts: Vec<&str> = rest.split(':').collect();
+                    if let Ok(src_id) = parts[0].parse::<u64>() {
+                        let max_hops: usize =
+                            parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(1);
+                        let mut visited: Vec<NodeId> = Vec::new();
+                        let mut frontier: Vec<NodeId> = vec![NodeId::new(src_id)];
+                        for _ in 0..max_hops {
+                            let mut next = Vec::new();
+                            for nid in &frontier {
+                                if let Some(ni) = self.node_index(*nid) {
+                                    for edge_ref in
+                                        self.graph.edges_directed(ni, Direction::Outgoing)
+                                    {
+                                        let tgt = edge_ref.weight().target;
+                                        if !visited.contains(&tgt) && !frontier.contains(&tgt) {
+                                            next.push(tgt);
+                                        }
+                                    }
+                                }
+                            }
+                            visited.extend(frontier);
+                            frontier = next;
+                            if frontier.is_empty() {
+                                break;
+                            }
+                        }
+                        visited.extend(frontier);
+                        visited.retain(|n| n.as_u64() != src_id);
+                        return Ok(visited);
+                    }
+                }
+
+                if query_str == "nodes" {
+                    return Ok(self.node_ids());
+                }
+
+                if query_str == "count" {
+                    return Ok(vec![NodeId::new(self.graph.node_count() as u64)]);
+                }
+
+                // Unknown custom query — return empty.
+                Vec::new()
+            }
         };
         Ok(results)
     }

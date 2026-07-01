@@ -1,10 +1,12 @@
 // See plans/02-omega-compiler.md §5
 
+use crate::encoder::encode_instruction;
 use crate::error::CompileError;
-use crate::ir::IrGraph;
-use crate::packet::{OmegaPacket, SIZE_C, SIZE_D, SIZE_I, SIZE_P};
+use crate::ir::{IrGraph, IrNodeId};
 use crate::passes::{optimize, OptimizationLevel};
 use crate::program::OmegaProgram;
+use crate::semantic;
+use a2x_core::Opcode;
 use a2x_sigma::SigmaProgram;
 
 /// Trait for compiling a Σ∞ program into Ω latent tensors.
@@ -26,7 +28,10 @@ impl CompileToOmega for SigmaProgram {
             return Err(CompileError::EmptyProgram);
         }
 
-        // Stage 3: Semantic analysis (stub — validate basic structure)
+        // Stage 3: Semantic analysis — validates jump targets, contradictory
+        // operators, data types, and empty intents.
+        semantic::analyze(self)?;
+
         // Stage 4: IR generation
         let mut ir = build_ir(self)?;
 
@@ -43,8 +48,7 @@ impl CompileToOmega for SigmaProgram {
 
 /// Build the IR graph from a Σ∞ program (Stage 4).
 fn build_ir(program: &SigmaProgram) -> Result<IrGraph, CompileError> {
-    use crate::ir::{IrMetadata, IrNode, IrNodeId, IrOperand};
-    use a2x_core::Opcode;
+    use crate::ir::{IrMetadata, IrNode, IrOperand};
 
     let mut graph = IrGraph::new();
     if program.is_empty() {
@@ -52,31 +56,25 @@ fn build_ir(program: &SigmaProgram) -> Result<IrGraph, CompileError> {
     }
 
     for (i, packet) in program.instructions.iter().enumerate() {
-        // Map intent operators to VM opcode (Phase 0: simplified mapping)
-        let opcode = if packet.intent.is_empty() {
-            Opcode::Nop
-        } else {
-            match packet.intent.operators[0] {
-                a2x_sigma::IntentOp::Synthesis => Opcode::Bind,
-                a2x_sigma::IntentOp::Split => Opcode::Differentiate,
-                a2x_sigma::IntentOp::Star => Opcode::Ground,
-                a2x_sigma::IntentOp::Cancel => Opcode::Halt,
-                a2x_sigma::IntentOp::Lightning => Opcode::Plan,
-                a2x_sigma::IntentOp::Warning => Opcode::Actuate,
-                _ => Opcode::Nop,
-            }
-        };
+        // Map intent operators to VM opcode.
+        // T2-4: handle multi-operator intents — use the first recognized
+        // intent operator (in priority order) as the primary opcode.
+        let opcode = map_intent_to_opcode(&packet.intent.operators);
 
         let mut operands = Vec::new();
         for label in &packet.context.labels {
             operands.push(IrOperand::Label(label.clone()));
         }
 
+        // T2-2: Wire control flow from plan operators.
+        // Map plan operators to IR control flow targets.
+        let control_flow = map_plan_to_control_flow(&packet.plan.operators, i);
+
         let node = IrNode {
             id: IrNodeId(i as u32),
             opcode,
             operands,
-            control_flow: Vec::new(),
+            control_flow,
             metadata: IrMetadata {
                 source_index: Some(i),
                 source_position: Some(i),
@@ -90,50 +88,145 @@ fn build_ir(program: &SigmaProgram) -> Result<IrGraph, CompileError> {
     Ok(graph)
 }
 
+/// Map Σ∞ intent operators to VM opcodes.
+/// T2-4: handles all intent operators (not just the first).
+fn map_intent_to_opcode(intents: &[a2x_sigma::IntentOp]) -> Opcode {
+    use a2x_sigma::IntentOp;
+    // Priority order: explicit operations first, then Nop fallback.
+    for intent in intents {
+        let op = match intent {
+            IntentOp::Synthesis => Opcode::Bind,
+            IntentOp::Split => Opcode::Differentiate,
+            IntentOp::Star => Opcode::Ground,
+            IntentOp::Cancel => Opcode::Halt,
+            IntentOp::Lightning => Opcode::Plan,
+            IntentOp::Warning => Opcode::Actuate,
+            IntentOp::Delay => Opcode::Evolve,
+            IntentOp::Contradiction => Opcode::Reflect,
+            IntentOp::Parallel => Opcode::Fork,
+            IntentOp::Merge => Opcode::Merge,
+            _ => continue,
+        };
+        return op;
+    }
+    Opcode::Nop
+}
+
+/// Map Σ∞ plan operators to IR control flow edges.
+/// T2-2: wire IR control flow from plan operators.
+fn map_plan_to_control_flow(plans: &[a2x_sigma::PlanOp], current_index: usize) -> Vec<IrNodeId> {
+    use a2x_sigma::PlanOp;
+    let mut targets = Vec::new();
+
+    for plan in plans {
+        match plan {
+            PlanOp::Sequential => {
+                // Default: next node. Don't add explicit edge — handled by
+                // sequential ordering in the IR.
+            }
+            PlanOp::Branch | PlanOp::Descend => {
+                // These are resolved at runtime via label lookup. We can't
+                // add compile-time control flow edges without knowing the
+                // target labels at compile time. Record the intent as a
+                // control flow marker.
+                // For now, add self-referencing edge as a placeholder.
+                targets.push(IrNodeId(current_index as u32));
+            }
+            PlanOp::Merge | PlanOp::Swarm => {
+                // Merge/swarm collect results from multiple branches.
+                // No compile-time control flow edge — handled at runtime.
+            }
+            PlanOp::Ascend => {
+                // Return from sub-program — pop call stack at runtime.
+            }
+            _ => {}
+        }
+    }
+
+    targets
+}
+
 /// Generate Ω tensors from the IR graph (Stage 6).
+///
+/// T2-3: Code generation now uses topological sort to order nodes by
+/// dataflow dependencies. Producers come before consumers, ensuring
+/// the Ω tensor layout respects the execution dependency graph.
 fn codegen(ir: &IrGraph) -> OmegaProgram<29796> {
+    let order = topological_sort(ir);
     let mut program = OmegaProgram::new();
-    for node in &ir.nodes {
+    for node in order {
         program.push(encode_instruction(node));
     }
     program
 }
 
-/// Encode a single IR node as an Ω tensor packet.
+/// Topological sort of IR nodes using DFS post-order (T2-3).
 ///
-/// Phase 0: deterministic Blake3-based projection of the opcode, operands,
-/// and control flow into the 4 tensor regions.
-fn encode_instruction(node: &crate::ir::IrNode) -> OmegaPacket<29796> {
-    let mut packet = OmegaPacket::<29796>::zeros();
+/// Nodes are sorted so that data producers appear before consumers.
+/// Control-flow edges are treated as dependency edges: if node A has
+/// a control_flow edge to node B, then A comes before B in the output.
+fn topological_sort(ir: &IrGraph) -> Vec<&crate::ir::IrNode> {
+    use std::collections::HashMap;
 
-    // Project opcode → intent region (I)
-    let hash = blake3::hash(&node.opcode.as_u8().to_le_bytes());
-    for (j, &byte) in hash.as_bytes().iter().enumerate().take(SIZE_I) {
-        packet.intent_slice_mut()[j] = byte as f32 / 255.0;
+    let n = ir.nodes.len();
+    if n == 0 {
+        return Vec::new();
     }
 
-    // Project operands → context region (C)
-    let op_str = format!("{:?}", &node.operands);
-    let hash = blake3::hash(op_str.as_bytes());
-    for (j, &byte) in hash.as_bytes().iter().enumerate().take(SIZE_C) {
-        packet.context_slice_mut()[j] = byte as f32 / 255.0;
+    // Build a node lookup by ID
+    let id_to_index: HashMap<IrNodeId, usize> = ir
+        .nodes
+        .iter()
+        .enumerate()
+        .map(|(i, node)| (node.id, i))
+        .collect();
+
+    let mut visited = vec![false; n];
+    let mut on_stack = vec![false; n];
+    let mut order = Vec::with_capacity(n);
+
+    fn dfs<'a>(
+        node_idx: usize,
+        nodes: &'a [crate::ir::IrNode],
+        id_to_index: &HashMap<IrNodeId, usize>,
+        visited: &mut [bool],
+        on_stack: &mut [bool],
+        order: &mut Vec<&'a crate::ir::IrNode>,
+    ) {
+        if visited[node_idx] {
+            return;
+        }
+        visited[node_idx] = true;
+        on_stack[node_idx] = true;
+
+        // Visit control_flow targets first (dependencies come before dependents)
+        for target_id in &nodes[node_idx].control_flow {
+            if let Some(&target_idx) = id_to_index.get(target_id) {
+                if on_stack[target_idx] {
+                    // Cycle detected — skip to avoid infinite recursion.
+                    // Cycles in control flow are valid (loops).
+                    continue;
+                }
+                dfs(target_idx, nodes, id_to_index, visited, on_stack, order);
+            }
+        }
+
+        on_stack[node_idx] = false;
+        order.push(&nodes[node_idx]);
     }
 
-    // Project control flow → plan region (P)
-    let cf_str = format!("{:?}", &node.control_flow);
-    let hash = blake3::hash(cf_str.as_bytes());
-    for (j, &byte) in hash.as_bytes().iter().enumerate().take(SIZE_P) {
-        packet.plan_slice_mut()[j] = byte as f32 / 255.0;
+    for i in 0..n {
+        dfs(
+            i,
+            &ir.nodes,
+            &id_to_index,
+            &mut visited,
+            &mut on_stack,
+            &mut order,
+        );
     }
 
-    // Project metadata → data region (D)
-    let meta_str = format!("{:?}", &node.metadata.source_index);
-    let hash = blake3::hash(meta_str.as_bytes());
-    for (j, &byte) in hash.as_bytes().iter().enumerate().take(SIZE_D) {
-        packet.data_slice_mut()[j] = byte as f32 / 255.0;
-    }
-
-    packet
+    order
 }
 
 #[cfg(test)]

@@ -41,6 +41,14 @@ pub enum VmStatus {
     Running,
     Halted,
     Yield,
+    Suspended,
+    /// Execution is suspended — can be resumed later.
+    /// See plans/10-concurrency.md §4 and T1-3 (Suspend/Resume).
+    ///
+    /// TODO(T1-3): Add a suspend flag (e.g., Arc<AtomicBool>) that
+    /// step() checks to actually produce this variant. Currently this
+    /// variant is handled in all match arms but never produced by any
+    /// code path — it is a forward-compatibility placeholder.
     Fault(VmError),
 }
 
@@ -107,6 +115,9 @@ pub struct CcsVm {
     paused: bool,
     /// Single-step mode: execute one instruction then re-pause.
     stepping: bool,
+    /// Last decoded opcode — captured during step() for use in tracer
+    /// logging (BUG-007: run() was logging Opcode::Nop after step consumed it).
+    last_opcode: Opcode,
 }
 
 /// Bundle of decoded instruction data, extracted without borrowing `self`.
@@ -149,6 +160,7 @@ impl CcsVm {
             tracer_log: Vec::new(),
             paused: false,
             stepping: false,
+            last_opcode: Opcode::Nop,
         }
     }
 
@@ -515,6 +527,7 @@ impl CcsVm {
                     return Ok(VmStatus::Halted);
                 }
                 VmStatus::Yield => return Ok(VmStatus::Yield),
+                VmStatus::Suspended => return Ok(VmStatus::Suspended),
                 VmStatus::Fault(err) => {
                     let _ = self.send_probe_event(ProbeEvent::Faulted {
                         ip: self.ip,
@@ -835,7 +848,10 @@ impl CcsVm {
             .map_err(VmError::SafetyViolation)?;
         self.safety.step().map_err(VmError::SafetyViolation)?;
 
-        // 3. EXECUTE — dispatch to operator
+        // 3. Record last opcode for tracer (BUG-007: capture before execution)
+        self.last_opcode = decoded.opcode;
+
+        // 4. EXECUTE — dispatch to operator
         match decoded.opcode {
             Opcode::Nop => {}
             Opcode::Bind => {
@@ -901,7 +917,7 @@ impl CcsVm {
             }
             Opcode::Actuate => {
                 debug!("ACT operator");
-                let _cmd = crate::operators::actuate::actuate();
+                let _cmd = crate::operators::actuate::actuate_from_actions(&self.last_plan_actions);
                 self.safety
                     .record_side_effect()
                     .map_err(VmError::SafetyViolation)?;
@@ -947,11 +963,11 @@ impl CcsVm {
             Opcode::Custom(_) => {}
         }
 
-        // 4. CONTROL FLOW — default: sequential (IP += 1)
+        // 5. CONTROL FLOW — default: sequential (IP += 1)
         self.ip += 1;
         self.steps_executed += 1;
 
-        // 5. TRACE — log to MemoryTrace
+        // 6. TRACE — log to MemoryTrace
         let entry = MemoryEntry {
             timestamp: Some(std::time::SystemTime::now()),
             instruction_bytes: decoded.bytes,
@@ -1025,7 +1041,7 @@ impl CcsVm {
                     if self.tracer_mode != TracerMode::Off {
                         self.tracer_log.push(TraceLogEntry {
                             ip: self.ip,
-                            opcode: Opcode::Nop, // post-step, opcode unknown here
+                            opcode: self.last_opcode, // BUG-007: captured in step()
                             steps: self.steps_executed,
                             state_summary: self
                                 .state_field
@@ -1041,6 +1057,7 @@ impl CcsVm {
                 }
                 VmStatus::Halted => return Ok(VmStatus::Halted),
                 VmStatus::Yield => return Ok(VmStatus::Yield),
+                VmStatus::Suspended => return Ok(VmStatus::Suspended),
                 VmStatus::Fault(err) => return Err(err),
             }
         }

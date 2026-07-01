@@ -32,6 +32,44 @@ pub enum SandboxMode {
     Vm,
 }
 
+/// Resource limits for CLI agent execution.
+/// See plans/12-security.md §5 — host system resource enforcement.
+#[derive(Clone, Debug)]
+pub struct ResourceLimits {
+    /// Maximum CPU time per program execution.
+    pub max_cpu_time: Duration,
+    /// Maximum estimated memory usage in bytes (world graph nodes + memory trace).
+    pub max_memory_bytes: u64,
+    /// Maximum output program size in bytes.
+    pub max_output_size: usize,
+    /// Maximum number of concurrently running programs.
+    pub max_concurrent_processes: usize,
+}
+
+impl Default for ResourceLimits {
+    fn default() -> Self {
+        ResourceLimits {
+            max_cpu_time: Duration::from_secs(30),
+            max_memory_bytes: 64 * 1024 * 1024, // 64 MiB
+            max_output_size: 10 * 1024 * 1024,  // 10 MiB
+            max_concurrent_processes: 8,
+        }
+    }
+}
+
+/// Default set of dangerous commands that are always forbidden.
+/// See plans/12-security.md §5 — safety denylist for destructive shell commands.
+const DEFAULT_FORBIDDEN_COMMANDS: &[&str] = &[
+    "rm", "sudo", "chmod", "dd", "mkfs", "shutdown", "reboot", "kill",
+];
+
+fn default_forbidden_commands() -> Vec<String> {
+    DEFAULT_FORBIDDEN_COMMANDS
+        .iter()
+        .map(|s| s.to_string())
+        .collect()
+}
+
 /// The CLI agent — executes Σ∞ programs that interact with the host system.
 ///
 /// Supports filesystem operations, process execution, and network operations
@@ -48,10 +86,16 @@ pub struct CliAgent {
     sandbox: SandboxMode,
     /// Maximum execution time per command.
     max_execution_time: Duration,
+    /// Commands that are always forbidden, even in CommandFilter mode.
+    /// See plans/12-security.md §5 — safety denylist for dangerous commands.
+    forbidden_commands: Vec<String>,
+    /// Resource limits: memory, output size, concurrent processes, CPU time.
+    /// See plans/12-security.md §5 — host system resource enforcement.
+    resource_limits: ResourceLimits,
 }
 
 impl CliAgent {
-    /// Create a new CLI agent with default sandboxing.
+    /// Create a new CLI agent with default sandboxing and denylist.
     pub fn new(id: AgentId) -> Self {
         CliAgent {
             id,
@@ -64,6 +108,8 @@ impl CliAgent {
                 "find".into(),
             ]),
             max_execution_time: Duration::from_secs(30),
+            forbidden_commands: default_forbidden_commands(),
+            resource_limits: ResourceLimits::default(),
         }
     }
 
@@ -74,11 +120,38 @@ impl CliAgent {
             vm: Mutex::new(CcsVm::new()),
             sandbox,
             max_execution_time: Duration::from_secs(30),
+            forbidden_commands: default_forbidden_commands(),
+            resource_limits: ResourceLimits::default(),
         }
     }
 
-    /// Check if a command is allowed.
+    /// Create with custom resource limits.
+    pub fn with_resource_limits(id: AgentId, limits: ResourceLimits) -> Self {
+        CliAgent {
+            id,
+            vm: Mutex::new(CcsVm::new()),
+            sandbox: SandboxMode::CommandFilter(vec![
+                "ls".into(),
+                "ps".into(),
+                "cat".into(),
+                "grep".into(),
+                "find".into(),
+            ]),
+            max_execution_time: limits.max_cpu_time,
+            forbidden_commands: default_forbidden_commands(),
+            resource_limits: limits,
+        }
+    }
+
+    /// Check if a command is allowed, considering both the allowlist and denylist.
+    ///
+    /// The denylist is always checked first — a forbidden command is rejected
+    /// regardless of sandbox mode.
     pub fn is_command_allowed(&self, command: &str) -> bool {
+        // Denylist always takes precedence (security-critical).
+        if self.forbidden_commands.iter().any(|c| c == command) {
+            return false;
+        }
         match &self.sandbox {
             SandboxMode::None => true,
             SandboxMode::CommandFilter(allowed) => allowed.iter().any(|c| c == command),
@@ -87,6 +160,38 @@ impl CliAgent {
                 true
             }
         }
+    }
+
+    /// Estimate memory usage of the VM in bytes.
+    ///
+    /// Uses the same heuristic as `SafetyConstraints::record_allocation()`:
+    /// ~4 KiB per world graph node + ~1 KiB per memory trace entry.
+    fn estimate_memory_usage(vm: &CcsVm) -> u64 {
+        let node_bytes = vm.world_graph.node_count() as u64 * 4096;
+        let trace_bytes = vm.memory_trace.len() as u64 * 1024;
+        node_bytes.saturating_add(trace_bytes)
+    }
+
+    /// Check resource limits before or after execution. Returns Err if any limit is exceeded.
+    ///
+    /// `label` describes what's being checked (e.g., "pre-execution VM state")
+    /// for clear error messages.
+    fn check_resource_limits(
+        &self,
+        label: &str,
+        program_id: a2x_core::program_id::ProgramId,
+        vm: &CcsVm,
+    ) -> Result<(), AgentError> {
+        let mem_used = Self::estimate_memory_usage(vm);
+        if mem_used >= self.resource_limits.max_memory_bytes {
+            return Err(AgentError::ResourceLimitExceeded {
+                program_id,
+                limit: format!("memory ({})", label),
+                used: mem_used,
+                max: self.resource_limits.max_memory_bytes,
+            });
+        }
+        Ok(())
     }
 
     /// Run a program on the CLI agent's VM.
@@ -104,12 +209,20 @@ impl CliAgent {
             .vm
             .lock()
             .map_err(|e| AgentError::TransportError(e.to_string()))?;
+
+        // Pre-execution: check accumulated memory limit.
+        self.check_resource_limits("pre-execution VM state", pid, &vm)?;
+
         vm.load(program);
         let status = vm.run().map_err(|e| AgentError::ProgramCrash {
             program_id: pid,
             reason: e.to_string(),
         })?;
 
+        // Post-execution: check memory limit (may have grown).
+        self.check_resource_limits("post-execution", pid, &vm)?;
+
+        // Post-execution: check CPU time.
         if start.elapsed() > self.max_execution_time {
             return Err(AgentError::Timeout {
                 timeout: self.max_execution_time,
@@ -117,10 +230,26 @@ impl CliAgent {
         }
 
         match status {
-            VmStatus::Halted | VmStatus::Yield => {
+            VmStatus::Halted | VmStatus::Yield | VmStatus::Suspended => {
                 // Extract output from the program's D field
-                let program = vm.program().cloned().unwrap_or_default();
-                Ok(program.output())
+                let output_program = vm.program().cloned().unwrap_or_default();
+                let output = output_program.output();
+
+                // Post-execution: check output size.
+                let output_size: usize = output
+                    .instructions
+                    .iter()
+                    .map(|inst| inst.data.payload.len())
+                    .sum();
+                if output_size > self.resource_limits.max_output_size {
+                    return Err(AgentError::OutputTooLarge {
+                        program_id: pid,
+                        size_bytes: output_size as u64,
+                        max_bytes: self.resource_limits.max_output_size as u64,
+                    });
+                }
+
+                Ok(output)
             }
             _ => Err(AgentError::ProgramCrash {
                 program_id: pid,
@@ -190,7 +319,9 @@ mod tests {
     #[test]
     fn test_command_allowed_none_sandbox() {
         let agent = CliAgent::with_sandbox(AgentId::new("cli-2"), SandboxMode::None);
-        assert!(agent.is_command_allowed("rm"));
+        // Denylist always takes precedence — even in None sandbox,
+        // "rm" is forbidden. Use a non-forbidden command instead.
+        assert!(!agent.is_command_allowed("rm"));
         assert!(agent.is_command_allowed("anything"));
     }
 
@@ -241,5 +372,74 @@ mod tests {
         let packet = Packet::Raw(b"\xc2\xa7".to_vec());
         let result = agent.execute(packet);
         assert!(result.is_err(), "unknown character should fail");
+    }
+
+    // ── Resource limit tests ──────────────────────────────────────────
+
+    #[test]
+    fn test_memory_limit_rejects_pre_execution() {
+        let limits = ResourceLimits {
+            max_memory_bytes: 0, // No memory allowed
+            ..ResourceLimits::default()
+        };
+        let agent = CliAgent::with_resource_limits(AgentId::new("cli-mem"), limits);
+
+        let packet = a2x_sigma::SigmaPacket::default();
+        let mut prog = SigmaProgram::new();
+        prog.push(packet);
+
+        let result = agent.run_program(prog);
+        assert!(result.is_err(), "should reject with zero memory limit");
+        assert!(
+            matches!(result, Err(AgentError::ResourceLimitExceeded { .. })),
+            "should be ResourceLimitExceeded"
+        );
+    }
+
+    #[test]
+    fn test_output_size_limit_rejects_large_output() {
+        let limits = ResourceLimits {
+            max_output_size: 1, // Only 1 byte of output allowed
+            ..ResourceLimits::default()
+        };
+        let agent = CliAgent::with_resource_limits(AgentId::new("cli-out"), limits);
+
+        // Create a program with a data payload that will become output.
+        let mut packet = a2x_sigma::SigmaPacket::default();
+        packet.data.payload = vec![0u8; 100]; // 100 bytes of output
+        let mut prog = SigmaProgram::new();
+        prog.push(packet);
+
+        let result = agent.run_program(prog);
+        assert!(result.is_err(), "should reject large output");
+        assert!(
+            matches!(result, Err(AgentError::OutputTooLarge { .. })),
+            "should be OutputTooLarge, got {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_default_limits_allow_normal_execution() {
+        let agent = CliAgent::new(AgentId::new("cli-default"));
+        let packet = a2x_sigma::SigmaPacket::default();
+        let mut prog = SigmaProgram::new();
+        prog.push(packet);
+
+        let result = agent.run_program(prog);
+        assert!(
+            result.is_ok(),
+            "default limits should allow normal execution"
+        );
+    }
+
+    #[test]
+    fn test_with_resource_limits_sets_max_execution_time() {
+        let limits = ResourceLimits {
+            max_cpu_time: Duration::from_secs(5),
+            ..ResourceLimits::default()
+        };
+        let agent = CliAgent::with_resource_limits(AgentId::new("cli-cpu"), limits);
+        assert_eq!(agent.max_execution_time, Duration::from_secs(5));
     }
 }

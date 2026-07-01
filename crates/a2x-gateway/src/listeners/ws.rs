@@ -21,9 +21,7 @@ use crate::listeners::{IncomingMessage, OutgoingMessage, ProtocolListener, Proto
 pub struct WebSocketListener {
     bind_address: String,
     running: bool,
-    #[allow(dead_code)]
     incoming_tx: Option<std::sync::mpsc::Sender<IncomingMessage>>,
-    #[allow(dead_code)]
     response_rx: Option<std::sync::mpsc::Receiver<OutgoingMessage>>,
 }
 
@@ -88,6 +86,20 @@ impl WebSocketListener {
         } else {
             None
         }
+    }
+
+    /// Get a reference to the incoming message channel.
+    ///
+    /// Used by the async event loop to drain messages from WebSocket clients.
+    pub fn incoming_sender(&self) -> Option<&std::sync::mpsc::Sender<IncomingMessage>> {
+        self.incoming_tx.as_ref()
+    }
+
+    /// Get a reference to the outgoing message channel.
+    ///
+    /// Used by the async event loop to push responses to WebSocket clients.
+    pub fn response_receiver(&self) -> Option<&std::sync::mpsc::Receiver<OutgoingMessage>> {
+        self.response_rx.as_ref()
     }
 
     /// Format an outgoing message as a binary frame (with length prefix).

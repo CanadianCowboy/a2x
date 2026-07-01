@@ -42,14 +42,34 @@ pub trait Transport: Send + Sync {
 }
 
 /// In-memory transport — uses HashMap-based mailboxes for local agent communication.
-#[derive(Default)]
+///
+/// T5-3: Mailboxes now have bounded capacity (default 64 messages) to prevent
+/// unbounded memory growth and provide backpressure.
 pub struct InMemoryTransport {
     mailboxes: std::collections::HashMap<String, Vec<WireMessage>>,
+    max_mailbox_size: usize,
+}
+
+impl Default for InMemoryTransport {
+    fn default() -> Self {
+        Self {
+            mailboxes: std::collections::HashMap::new(),
+            max_mailbox_size: 64,
+        }
+    }
 }
 
 impl InMemoryTransport {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Create a transport with a custom mailbox capacity.
+    pub fn with_capacity(max_mailbox_size: usize) -> Self {
+        Self {
+            mailboxes: std::collections::HashMap::new(),
+            max_mailbox_size,
+        }
     }
 }
 
@@ -62,6 +82,12 @@ impl Transport for InMemoryTransport {
                 "recipient '{}' not registered",
                 recipient
             )))?;
+        if mailbox.len() >= self.max_mailbox_size {
+            return Err(TransportError::SendFailed(format!(
+                "mailbox for '{}' is full (capacity: {})",
+                recipient, self.max_mailbox_size
+            )));
+        }
         mailbox.push(message);
         Ok(())
     }

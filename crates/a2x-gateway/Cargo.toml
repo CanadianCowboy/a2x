@@ -22,6 +22,11 @@ toml = { workspace = true }
 tracing = { workspace = true }
 anyhow = { workspace = true }
 uuid = { workspace = true }
+rustls = { workspace = true, optional = true }
+
+[features]
+default = []
+tls = ["dep:rustls"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }

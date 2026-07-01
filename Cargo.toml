@@ -11,6 +11,7 @@ members = [
     "crates/a2x-client",
     "crates/a2x-cli",
     "crates/a2x-probe",
+    "crates/a2x-startup",
 ]
 
 [workspace.package]
@@ -29,6 +30,7 @@ serde_json = "1"
 petgraph = "0.7"
 ndarray = "0.16"
 tokio = { version = "1", features = ["full"] }
+tokio-util = "0.7"
 clap = { version = "4", features = ["derive"] }
 tracing = "0.1"
 anyhow = "1"
@@ -40,6 +42,13 @@ tower-http = { version = "0.5", features = ["cors"] }
 toml = "0.8"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 uuid = { version = "1", features = ["v4"] }
+# Phase 8: Ed25519 agent identity + message signing (T4-1)
+ed25519-dalek = "2"
+rand = "0.8"
+# TLS support (rustls — pure Rust, no OpenSSL dependency)
+rustls = "0.23"
+rustls-pemfile = "2"
+webpki-roots = "0.26"
 
 [profile.release]
 opt-level = 3

@@ -10,10 +10,43 @@
 ///
 /// The total dimension N defaults to 29,796 and is configurable via const generics.
 #[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct OmegaPacket<const N: usize = 29796> {
     /// Flat tensor storage.
     pub data: [f32; N],
+}
+
+#[cfg(feature = "serde")]
+impl<const N: usize> serde::Serialize for OmegaPacket<N> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut state = serializer.serialize_struct("OmegaPacket", 1)?;
+        state.serialize_field("data", &self.data[..])?;
+        state.end()
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de, const N: usize> serde::Deserialize<'de> for OmegaPacket<N> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct Helper {
+            data: Vec<f32>,
+        }
+
+        let helper = Helper::deserialize(deserializer)?;
+        let data: [f32; N] = helper
+            .data
+            .try_into()
+            .map_err(|_| serde::de::Error::custom(format!("expected array of size {}", N)))?;
+
+        Ok(OmegaPacket { data })
+    }
 }
 
 /// Slice offsets within the Ω tensor (compile-time constants).

@@ -1,0 +1,28 @@
+[package]
+name = "a2x-startup"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "A2X startup, shutdown, configuration loading, and state persistence"
+
+[features]
+default = []
+key-rotation = ["dep:ed25519-dalek", "dep:rand"]
+
+[dependencies]
+a2x-core = { path = "../a2x-core" }
+a2x-sigma = { path = "../a2x-sigma" }
+a2x-ccs = { path = "../a2x-ccs" }
+serde = { workspace = true }
+toml = { workspace = true }
+blake3 = { workspace = true }
+tracing = { workspace = true }
+ed25519-dalek = { workspace = true, optional = true }
+rand = { workspace = true, optional = true }
+
+[lib]
+name = "a2x_startup"
+path = "src/lib.rs"

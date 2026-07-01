@@ -24,6 +24,117 @@ impl AgentInfo {
     }
 }
 
+/// Agent card — typed metadata for agent discovery and capability negotiation.
+///
+/// Based on the A2A (Agent-to-Agent) AgentCard pattern. Provides structured
+/// information about an agent's identity, capabilities, endpoints, and
+/// supported modalities for protocol-level handshake.
+///
+/// See plans/04-bus.md §5 and the comprehensive audit T2-1 recommendation.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct AgentCard {
+    /// Unique agent identifier.
+    pub id: AgentId,
+    /// Human-readable display name.
+    pub name: String,
+    /// Semantic version of the agent implementation.
+    pub version: String,
+    /// Agent type classification.
+    pub agent_type: AgentType,
+    /// Capabilities this agent provides.
+    pub capabilities: Vec<Capability>,
+    /// Network endpoints where this agent can be reached.
+    pub endpoints: Vec<String>,
+    /// Supported authentication methods.
+    pub auth_methods: Vec<String>,
+    /// Modalities this agent can process (e.g., "text", "sigma", "omega").
+    pub modalities: Vec<String>,
+    /// Short description of the agent's purpose.
+    pub description: String,
+}
+
+impl AgentCard {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        id: AgentId,
+        name: impl Into<String>,
+        version: impl Into<String>,
+        agent_type: AgentType,
+        capabilities: Vec<Capability>,
+        endpoints: Vec<String>,
+        auth_methods: Vec<String>,
+        modalities: Vec<String>,
+        description: impl Into<String>,
+    ) -> Self {
+        AgentCard {
+            id,
+            name: name.into(),
+            version: version.into(),
+            agent_type,
+            capabilities,
+            endpoints,
+            auth_methods,
+            modalities,
+            description: description.into(),
+        }
+    }
+
+    /// Convert to a lightweight AgentInfo for bus registration.
+    pub fn to_agent_info(&self) -> AgentInfo {
+        AgentInfo {
+            id: self.id.clone(),
+            agent_type: self.agent_type,
+            capabilities: self.capabilities.clone(),
+            online: true,
+        }
+    }
+}
+
+/// Agent handshake — protocol-level capability negotiation.
+///
+/// Based on the MCP/A2A initialization handshake pattern. Before an agent
+/// can send programs to another agent, they exchange AgentCards to verify
+/// compatibility: supported modalities, auth methods, and protocol versions.
+///
+/// See plans/04-bus.md §5 and the comprehensive audit T1-2.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct AgentHandshake {
+    /// The agent card this agent presents.
+    pub card: AgentCard,
+    /// Protocol version(s) this agent supports.
+    pub protocol_versions: Vec<String>,
+    /// Nonce for preventing replay attacks.
+    pub nonce: [u8; 32],
+}
+
+impl AgentHandshake {
+    pub fn new(card: AgentCard) -> Self {
+        let mut nonce = [0u8; 32];
+        // Deterministic nonce from card properties.
+        // In production, this would use a CSPRNG.
+        for (i, byte) in nonce.iter_mut().enumerate() {
+            *byte = (i as u8)
+                .wrapping_mul(17)
+                .wrapping_add(card.id.as_str().len() as u8);
+        }
+        AgentHandshake {
+            card,
+            protocol_versions: vec!["0.6.0".into(), "0.7.0-alpha".into()],
+            nonce,
+        }
+    }
+
+    /// Verify compatibility between two handshakes.
+    /// Returns true if they share at least one protocol version.
+    pub fn is_compatible_with(&self, other: &AgentHandshake) -> bool {
+        self.protocol_versions
+            .iter()
+            .any(|v| other.protocol_versions.contains(v))
+    }
+}
+
 /// Filter for discovering agents.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AgentFilter {

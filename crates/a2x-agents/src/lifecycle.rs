@@ -2,20 +2,25 @@
 
 use std::time::{Duration, Instant};
 
+use a2x_ccs::CcsVm;
 use a2x_core::error::AgentError;
 use a2x_core::program_id::ProgramId;
 
 /// Agent lifecycle state.
-#[derive(Clone, Debug)]
 pub enum AgentState {
     /// Agent is initialized but idle, waiting for a program.
     Idle,
-    /// Agent is executing a program.
+    /// Agent is executing a program. Per plans/05-agents.md §4, Running
+    /// carries a reference to the VM so the agent lifecycle manager can
+    /// inspect or pause the executing VM.
     Running {
         /// The program being executed.
         program_id: ProgramId,
         /// When execution started.
         started_at: Instant,
+        /// The CCS VM executing the program (T3-5: plan compliance).
+        /// None only after cloning — clones drop the VM reference.
+        vm: Option<Box<CcsVm>>,
     },
     /// Agent encountered a recoverable error.
     Error {
@@ -28,6 +33,56 @@ pub enum AgentState {
     Halted,
     /// Agent is terminated (can be restarted).
     Dead,
+}
+
+use std::fmt;
+
+impl Clone for AgentState {
+    fn clone(&self) -> Self {
+        match self {
+            AgentState::Idle => AgentState::Idle,
+            AgentState::Running {
+                program_id,
+                started_at,
+                ..
+            } => AgentState::Running {
+                program_id: *program_id,
+                started_at: *started_at,
+                vm: None, // VM is not cloneable — informational clones omit it
+            },
+            AgentState::Error { error, retry_count } => AgentState::Error {
+                error: error.clone(),
+                retry_count: *retry_count,
+            },
+            AgentState::Halted => AgentState::Halted,
+            AgentState::Dead => AgentState::Dead,
+        }
+    }
+}
+
+impl fmt::Debug for AgentState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AgentState::Idle => write!(f, "Idle"),
+            AgentState::Running {
+                program_id,
+                started_at,
+                vm,
+            } => f
+                .debug_struct("Running")
+                .field("program_id", program_id)
+                .field("started_at", started_at)
+                .field("vm", &vm.as_ref().map(|_| "CcsVm(...)"))
+                .finish(),
+            AgentState::Error { error, retry_count } => f
+                .debug_struct("Error")
+                .field("error", error)
+                .field("retry_count", retry_count)
+                .finish(),
+            AgentState::Halted => write!(f, "Halted"),
+            AgentState::Dead => write!(f, "Dead"),
+        }
+    }
 }
 
 impl AgentState {
@@ -77,14 +132,19 @@ impl AgentLifecycle {
         }
     }
 
-    /// Transition to Running state.
-    pub fn start_program(&mut self, program_id: ProgramId) -> Result<(), AgentError> {
+    /// Transition to Running state with the given VM.
+    pub fn start_program(
+        &mut self,
+        program_id: ProgramId,
+        vm: Option<Box<CcsVm>>,
+    ) -> Result<(), AgentError> {
         if !self.state.can_accept() {
             return Err(AgentError::AtCapacity { max: 1 });
         }
         self.state = AgentState::Running {
             program_id,
             started_at: Instant::now(),
+            vm,
         };
         Ok(())
     }
@@ -164,24 +224,52 @@ mod tests {
     fn test_start_program() {
         let mut lc = AgentLifecycle::default();
         let pid = test_program_id();
-        lc.start_program(pid).unwrap();
+        lc.start_program(pid, None).unwrap();
         assert!(lc.state.is_running());
         assert_eq!(lc.state.current_program(), Some(pid));
     }
 
     #[test]
+    fn test_start_program_with_vm() {
+        let mut lc = AgentLifecycle::default();
+        let pid = test_program_id();
+        let vm = Box::new(CcsVm::new());
+        lc.start_program(pid, Some(vm)).unwrap();
+        assert!(lc.state.is_running());
+        // Verify Running carries the VM
+        match &lc.state {
+            AgentState::Running { vm, .. } => assert!(vm.is_some()),
+            _ => panic!("expected Running"),
+        }
+    }
+
+    #[test]
     fn test_cannot_start_when_running() {
         let mut lc = AgentLifecycle::default();
-        lc.start_program(test_program_id()).unwrap();
-        assert!(lc.start_program(test_program_id()).is_err());
+        lc.start_program(test_program_id(), None).unwrap();
+        assert!(lc.start_program(test_program_id(), None).is_err());
     }
 
     #[test]
     fn test_complete_program() {
         let mut lc = AgentLifecycle::default();
-        lc.start_program(test_program_id()).unwrap();
+        lc.start_program(test_program_id(), None).unwrap();
         lc.complete_program();
         assert!(matches!(lc.state, AgentState::Idle));
+    }
+
+    #[test]
+    fn test_clone_running_drops_vm() {
+        let mut lc = AgentLifecycle::default();
+        let pid = test_program_id();
+        let vm = Box::new(CcsVm::new());
+        lc.start_program(pid, Some(vm)).unwrap();
+        let cloned = lc.state.clone();
+        // Clone should have vm = None (VM not cloneable)
+        match cloned {
+            AgentState::Running { vm, .. } => assert!(vm.is_none()),
+            _ => panic!("expected Running"),
+        }
     }
 
     #[test]

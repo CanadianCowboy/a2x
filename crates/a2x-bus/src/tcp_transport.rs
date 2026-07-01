@@ -147,14 +147,22 @@ fn decode_message(buf: &[u8]) -> Result<(WireMessage, usize), TransportError> {
             "truncated correlation_id".into(),
         ));
     }
-    let correlation_id = u64::from_be_bytes(body[pos..pos + 8].try_into().unwrap());
+    let correlation_id = u64::from_be_bytes(
+        body[pos..pos + 8]
+            .try_into()
+            .map_err(|_| TransportError::RecvFailed("invalid correlation_id bytes".into()))?,
+    );
     pos += 8;
 
     // timestamp (8 bytes)
     if pos + 8 > body.len() {
         return Err(TransportError::RecvFailed("truncated timestamp".into()));
     }
-    let timestamp = u64::from_be_bytes(body[pos..pos + 8].try_into().unwrap());
+    let timestamp = u64::from_be_bytes(
+        body[pos..pos + 8]
+            .try_into()
+            .map_err(|_| TransportError::RecvFailed("invalid timestamp bytes".into()))?,
+    );
     pos += 8;
 
     // payload
@@ -163,7 +171,11 @@ fn decode_message(buf: &[u8]) -> Result<(WireMessage, usize), TransportError> {
             "truncated payload length".into(),
         ));
     }
-    let payload_len = u32::from_be_bytes(body[pos..pos + 4].try_into().unwrap()) as usize;
+    let payload_len = u32::from_be_bytes(
+        body[pos..pos + 4]
+            .try_into()
+            .map_err(|_| TransportError::RecvFailed("invalid payload length bytes".into()))?,
+    ) as usize;
     pos += 4;
     if pos + payload_len > body.len() {
         return Err(TransportError::RecvFailed("truncated payload".into()));
@@ -229,7 +241,11 @@ fn read_len_prefixed_string(data: &[u8], pos: usize) -> Result<(String, usize), 
     if pos + 4 > data.len() {
         return Err(TransportError::RecvFailed("truncated string length".into()));
     }
-    let len = u32::from_be_bytes(data[pos..pos + 4].try_into().unwrap()) as usize;
+    let len = u32::from_be_bytes(
+        data[pos..pos + 4]
+            .try_into()
+            .map_err(|_| TransportError::RecvFailed("invalid string length bytes".into()))?,
+    ) as usize;
     let start = pos + 4;
     if start + len > data.len() {
         return Err(TransportError::RecvFailed("truncated string data".into()));
@@ -247,7 +263,11 @@ fn read_len_prefixed_optional_string(
             "truncated opt string length".into(),
         ));
     }
-    let len = u32::from_be_bytes(data[pos..pos + 4].try_into().unwrap()) as usize;
+    let len = u32::from_be_bytes(
+        data[pos..pos + 4]
+            .try_into()
+            .map_err(|_| TransportError::RecvFailed("invalid opt string length bytes".into()))?,
+    ) as usize;
     if len == 0 {
         return Ok((None, 4));
     }
@@ -288,7 +308,11 @@ impl TcpTransport {
 
     /// Get the actual bound socket address for a registered key (for `send`).
     pub fn bound_addr(&self, key: &str) -> Option<std::net::SocketAddr> {
-        self.bound_addrs.lock().unwrap().get(key).copied()
+        self.bound_addrs
+            .lock()
+            .map_err(|_| ())
+            .ok()
+            .and_then(|addrs| addrs.get(key).copied())
     }
 }
 
@@ -320,12 +344,14 @@ impl Transport for TcpTransport {
     }
 
     fn recv(&mut self, addr: &str) -> Result<Vec<WireMessage>, TransportError> {
-        let listener = {
-            let listeners = self.listeners.lock().unwrap();
-            listeners
-                .get(addr)
-                .map(|l| l.local_addr().expect("listener must have a local address"))
-        };
+        let listeners = self
+            .listeners
+            .lock()
+            .map_err(|_| TransportError::RecvFailed("mutex poisoned".into()))?;
+        let listener = listeners
+            .get(addr)
+            .map(|l| l.local_addr().expect("listener must have a local address"));
+        drop(listeners);
         if listener.is_none() {
             return Err(TransportError::RecvFailed(format!(
                 "address '{addr}' not registered"
@@ -351,7 +377,10 @@ impl Transport for TcpTransport {
 
         let mut messages = Vec::new();
         let listener = {
-            let mut listeners = self.listeners.lock().unwrap();
+            let mut listeners = self
+                .listeners
+                .lock()
+                .map_err(|_| TransportError::RecvFailed("mutex poisoned".into()))?;
             listeners.remove(addr)
         };
 
@@ -377,7 +406,7 @@ impl Transport for TcpTransport {
             let _ = listener.set_nonblocking(false);
             self.listeners
                 .lock()
-                .unwrap()
+                .map_err(|_| TransportError::RecvFailed("mutex poisoned".into()))?
                 .insert(addr.to_string(), listener);
         }
 
@@ -400,18 +429,22 @@ impl Transport for TcpTransport {
 
         self.bound_addrs
             .lock()
-            .unwrap()
+            .map_err(|_| TransportError::BindFailed("mutex poisoned".into()))?
             .insert(addr.to_string(), bound);
         self.listeners
             .lock()
-            .unwrap()
+            .map_err(|_| TransportError::BindFailed("mutex poisoned".into()))?
             .insert(addr.to_string(), listener);
         Ok(())
     }
 
     fn deregister(&mut self, addr: &str) {
-        self.listeners.lock().unwrap().remove(addr);
-        self.bound_addrs.lock().unwrap().remove(addr);
+        if let Ok(mut l) = self.listeners.lock() {
+            l.remove(addr);
+        }
+        if let Ok(mut b) = self.bound_addrs.lock() {
+            b.remove(addr);
+        }
     }
 }
 

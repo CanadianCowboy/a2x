@@ -7,6 +7,9 @@ pub mod entity;
 pub mod error;
 pub mod gateway;
 pub mod listeners;
+pub mod rate_limiter;
+pub mod security_event;
+pub mod tls;
 pub mod webhook;
 
 // Re-exports
@@ -16,4 +19,6 @@ pub use entity::{Capability, Entity, EntityId, EntityInfo, EntityType};
 pub use error::GatewayError;
 pub use gateway::Gateway;
 pub use listeners::{ProtocolListener, ProtocolListenerType};
+pub use security_event::SecurityEvent;
+pub use tls::GatewayTlsConfig;
 pub use webhook::{WebhookEntry, WebhookManager};

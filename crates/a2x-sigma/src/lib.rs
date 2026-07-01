@@ -3,6 +3,7 @@
 //
 // Provides: tokenizer, parser, operator tables, SigmaPacket, SigmaProgram
 
+pub mod binary;
 pub mod context;
 pub mod data;
 pub mod display;
@@ -16,6 +17,9 @@ pub mod token;
 pub mod tokenizer;
 
 // Re-export key types for convenience
+pub use binary::{
+    decode_instruction, encode_instruction, from_bytes, to_bytes, BinaryError, BinaryOpcode,
+};
 pub use context::ContextOp;
 pub use data::DataOp;
 pub use error::{LexError, ParseError};

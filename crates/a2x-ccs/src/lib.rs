@@ -25,6 +25,14 @@ pub mod state_ndarray;
 pub mod vm;
 pub mod world_graph;
 
+// Phase 7: Concurrency modules
+#[cfg(feature = "tokio")]
+pub mod async_vm;
+#[cfg(feature = "tokio")]
+pub mod parallel_swarm;
+#[cfg(feature = "tokio")]
+pub mod scheduler;
+
 // Re-export commonly used types at crate root
 pub use error::{StateError, VmError, WorldGraphError};
 pub use memory::VecMemoryTrace;

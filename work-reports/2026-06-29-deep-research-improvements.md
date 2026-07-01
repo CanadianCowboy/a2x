@@ -1,4 +1,4 @@
-# A2X Deep Research — Ways to Make This Better
+-# A2X Deep Research — Ways to Make This Better
 
 > **Date:** 2026-06-29
 > **Scope:** Full codebase audit + web research on comparable AI-native protocols

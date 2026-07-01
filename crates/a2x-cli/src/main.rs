@@ -331,7 +331,7 @@ fn cmd_probe(agent_id: &str, agent_type: &str) -> Result<()> {
             agent.state_summary()
         }
         "llm" => {
-            let agent = LlmAgent::new(id, "probe-model");
+            let agent = LlmAgent::new_stub(id, "probe-model");
             agent.state_summary()
         }
         "ccs" => {

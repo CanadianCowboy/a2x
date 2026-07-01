@@ -79,6 +79,19 @@ pub enum AgentError {
     },
     /// Program exceeded its time limit.
     Timeout { timeout: std::time::Duration },
+    /// Program exceeded a resource limit (memory, output size, etc.).
+    ResourceLimitExceeded {
+        program_id: ProgramId,
+        limit: String,
+        used: u64,
+        max: u64,
+    },
+    /// Output program is too large.
+    OutputTooLarge {
+        program_id: ProgramId,
+        size_bytes: u64,
+        max_bytes: u64,
+    },
     /// VM-level error (string-only at core layer).
     VmError(String),
     /// Transport-level error.
@@ -101,6 +114,29 @@ impl std::fmt::Display for AgentError {
             }
             AgentError::Timeout { timeout } => {
                 write!(f, "program exceeded time limit of {:?}", timeout)
+            }
+            AgentError::ResourceLimitExceeded {
+                program_id,
+                limit,
+                used,
+                max,
+            } => {
+                write!(
+                    f,
+                    "program {} exceeded {} limit: {} used (max {})",
+                    program_id, limit, used, max
+                )
+            }
+            AgentError::OutputTooLarge {
+                program_id,
+                size_bytes,
+                max_bytes,
+            } => {
+                write!(
+                    f,
+                    "program {} output too large: {} bytes (max {})",
+                    program_id, size_bytes, max_bytes
+                )
             }
             AgentError::VmError(msg) => write!(f, "VM error: {}", msg),
             AgentError::TransportError(msg) => write!(f, "transport error: {}", msg),

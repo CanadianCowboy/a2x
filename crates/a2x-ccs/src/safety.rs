@@ -153,17 +153,32 @@ impl SafetyConstraints {
         }
     }
 
-    /// Record a node allocation.
+    /// Record a node allocation and enforce memory budget.
     ///
-    /// Currently a **counter-only stub**: `SafetyLevel::Bounded` has no
-    /// `max_allocations` (or per-allocation byte budget) field yet, so this
-    /// neither enforces nor reports a limit — just bumps the accounting
-    /// counter for future probe tooling. Once `Bounded` gains an allocation
-    /// budget (a Phase 2+ addition), this is where enforcement lives. The
-    /// VM's `dispatch_*` helpers invoke it for observability only today.
+    /// Tracks the number of nodes allocated and checks against
+    /// `max_memory_bytes` when the safety level is `Bounded`.
+    /// The VM calls this after each WorldGraph allocation.
     pub fn record_allocation(&mut self) -> Result<(), String> {
         self.nodes_allocated += 1;
-        Ok(())
+
+        // Enforce max_memory_bytes: estimate ~4KB per node (ConceptVector
+        // data + metadata + edges). This is a heuristic — precise byte
+        // tracking would require the actual allocation size.
+        match &self.level {
+            SafetyLevel::Bounded {
+                max_memory_bytes, ..
+            } => {
+                let estimated_bytes = self.nodes_allocated.saturating_mul(4096);
+                if estimated_bytes > *max_memory_bytes {
+                    return Err(format!(
+                        "memory limit exceeded: estimated {} bytes > {} max",
+                        estimated_bytes, max_memory_bytes
+                    ));
+                }
+                Ok(())
+            }
+            _ => Ok(()),
+        }
     }
 
     /// Check if an operation is safe to perform.

@@ -13,11 +13,13 @@ use a2x_core::capability::Capability;
 use a2x_core::state::StateSnapshot;
 use a2x_sigma::program::SigmaProgram;
 
-use crate::auth::{AuthMethod, AuthProvider, InMemoryAuthProvider};
+use crate::auth::{AuthMethod, AuthProvider, EntityPermissions, InMemoryAuthProvider};
 use crate::config::GatewayConfig;
 use crate::entity::{Entity, EntityId, EntityInfo};
 use crate::error::GatewayError;
 use crate::listeners::ProtocolListener;
+use crate::rate_limiter::RateLimiter;
+use crate::security_event::SecurityEvent;
 use crate::webhook::WebhookManager;
 
 /// Mutable gateway state (behind Arc<Mutex>).
@@ -36,6 +38,8 @@ pub struct GatewayState {
     pub listeners: Vec<Box<dyn ProtocolListener>>,
     /// Correlation ID counter.
     pub next_correlation_id: u64,
+    /// Rate limiter: token-bucket per entity.
+    pub rate_limiter: RateLimiter,
 }
 
 impl GatewayState {
@@ -48,6 +52,7 @@ impl GatewayState {
             config: GatewayConfig::default(),
             listeners: Vec::new(),
             next_correlation_id: 1,
+            rate_limiter: RateLimiter::new(60),
         }
     }
 
@@ -55,7 +60,22 @@ impl GatewayState {
     pub fn register_entity(&mut self, entity: Box<dyn Entity>) {
         let id = entity.entity_id();
         tracing::info!("Entity registered: {} ({:?})", id, entity.entity_type());
+        SecurityEvent::emit(SecurityEvent::EntityAuthenticated {
+            entity_id: id.clone(),
+            method: "registration".into(),
+        });
         self.entities.insert(id, entity);
+    }
+
+    /// Add a protocol listener (fixes BUG-001).
+    pub fn add_listener(&mut self, listener: Box<dyn ProtocolListener>) {
+        let ltype = format!("{:?}", listener.listener_type());
+        tracing::info!("Added listener: {}", ltype);
+        SecurityEvent::emit(SecurityEvent::ListenerAdded {
+            listener_type: ltype,
+            address: listener.bound_address(),
+        });
+        self.listeners.push(listener);
     }
 
     /// Remove an entity by ID.
@@ -92,11 +112,113 @@ impl GatewayState {
     }
 
     /// Execute a Σ∞ program on the default orchestrator agent.
+    ///
+    /// If `entity_id` is provided, checks permissions (max_instructions, rate limit)
+    /// before execution. See plans/12-security.md §4.
     pub fn execute_program(&self, program: &SigmaProgram) -> Result<SigmaProgram, GatewayError> {
         let orchestrator = Orchestrator::new(AgentId::new("gateway-orch"));
         orchestrator
             .dispatch(program.clone())
             .map_err(|e| GatewayError::ProgramError(e.to_string()))
+    }
+
+    /// Execute a program with permission enforcement for the given entity.
+    ///
+    /// Fixes BUG-005: `EntityPermissions` were stored but never checked.
+    pub fn execute_program_for_entity(
+        &mut self,
+        program: &SigmaProgram,
+        entity_id: &EntityId,
+    ) -> Result<SigmaProgram, GatewayError> {
+        let permissions_checked = self.auth.permissions(entity_id).is_some();
+        SecurityEvent::emit(SecurityEvent::ProgramSubmitted {
+            entity_id: entity_id.clone(),
+            instruction_count: program.instructions.len(),
+            permissions_checked,
+        });
+
+        // Check permissions if available.
+        if let Some(perms) = self.auth.permissions(entity_id) {
+            self.enforce_permissions(&perms, program)?;
+        }
+        let result = self.execute_program(program);
+        SecurityEvent::emit(SecurityEvent::ProgramCompleted {
+            entity_id: entity_id.clone(),
+            status: if result.is_ok() { "completed" } else { "error" }.into(),
+        });
+        result
+    }
+
+    /// Enforce entity permissions against a program request.
+    ///
+    /// Checks: max_instructions, rate_limit.
+    /// Returns `Err(PermissionDenied)` or `Err(RateLimited)` on violation.
+    pub fn enforce_permissions(
+        &mut self,
+        perms: &EntityPermissions,
+        program: &SigmaProgram,
+    ) -> Result<(), GatewayError> {
+        // Check instruction count limit.
+        let inst_count = program.instructions.len() as u64;
+        if inst_count > perms.max_instructions {
+            SecurityEvent::emit(SecurityEvent::PermissionDenied {
+                entity_id: perms.entity_id.clone(),
+                action: format!(
+                    "execute ({} > {} instructions)",
+                    inst_count, perms.max_instructions
+                ),
+            });
+            return Err(GatewayError::PermissionDenied(format!(
+                "program has {} instructions, max allowed is {}",
+                inst_count, perms.max_instructions
+            )));
+        }
+
+        // Check rate limit.
+        if perms.rate_limit > 0 {
+            self.enforce_rate_limit(&perms.entity_id, perms.rate_limit)?;
+        }
+
+        Ok(())
+    }
+
+    /// Enforce rate limiting using a token-bucket algorithm.
+    ///
+    /// Each entity gets a token bucket with capacity = limit, refilling at
+    /// limit/60 tokens per second. Bursts up to the full limit are allowed,
+    /// but sustained rate is bounded to limit/min.
+    fn enforce_rate_limit(&mut self, entity_id: &EntityId, limit: u32) -> Result<(), GatewayError> {
+        if !self.rate_limiter.check(entity_id, limit) {
+            SecurityEvent::emit(SecurityEvent::RateLimited {
+                entity_id: entity_id.clone(),
+                count: limit.saturating_add(1),
+                limit,
+            });
+            return Err(GatewayError::RateLimited {
+                entity_id: entity_id.to_string(),
+                limit,
+            });
+        }
+        Ok(())
+    }
+
+    /// Check if an entity is allowed to probe agent state.
+    ///
+    /// Fixes BUG-005: probe access was never checked against permissions.
+    pub fn check_probe_permission(&self, entity_id: &EntityId) -> Result<(), GatewayError> {
+        if let Some(perms) = self.auth.permissions(entity_id) {
+            if !perms.can_probe {
+                SecurityEvent::emit(SecurityEvent::PermissionDenied {
+                    entity_id: entity_id.clone(),
+                    action: "probe".into(),
+                });
+                return Err(GatewayError::PermissionDenied(format!(
+                    "entity '{}' is not authorized to probe agent state",
+                    entity_id
+                )));
+            }
+        }
+        Ok(())
     }
 
     /// Probe an agent's state by type and ID.
@@ -107,7 +229,7 @@ impl GatewayState {
         let agents: Vec<Box<dyn Agent>> = vec![
             Box::new(Orchestrator::new(id.clone())),
             Box::new(CliAgent::new(id.clone())),
-            Box::new(LlmAgent::new(id.clone(), "probe")),
+            Box::new(LlmAgent::new_stub(id.clone(), "probe")),
             Box::new(CcsAgent::new(id.clone())),
         ];
 
@@ -173,8 +295,10 @@ impl Gateway {
     }
 
     /// Register a built-in agent on the bus (for demo/testing).
-    pub fn register_builtin_agents(&self) {
-        let mut gw = self.state.lock().unwrap();
+    pub fn register_builtin_agents(&self) -> Result<(), GatewayError> {
+        let mut gw = self.state.lock().map_err(|e| {
+            GatewayError::ListenerError(format!("failed to lock gateway state: {}", e))
+        })?;
         let agents = vec![
             AgentInfo::new(
                 AgentId::new("orch-1"),
@@ -209,6 +333,7 @@ impl Gateway {
         for info in agents {
             let _ = gw.bus.register_agent(info);
         }
+        Ok(())
     }
 
     /// Get a reference to the shared gateway state (for listener integration).
@@ -230,6 +355,9 @@ impl Gateway {
         }
 
         tracing::info!("Gateway started with {} listener(s)", gw.listeners.len());
+        SecurityEvent::emit(SecurityEvent::GatewayStarted {
+            listener_count: gw.listeners.len(),
+        });
         Ok(())
     }
 
@@ -244,6 +372,7 @@ impl Gateway {
         }
 
         tracing::info!("Gateway stopped");
+        SecurityEvent::emit(SecurityEvent::GatewayStopped);
         Ok(())
     }
 }
@@ -364,7 +493,7 @@ entity_id = "app-1"
     #[test]
     fn test_gateway_register_builtin_agents() {
         let gw = Gateway::new();
-        gw.register_builtin_agents();
+        gw.register_builtin_agents().unwrap();
         let state = gw.state.lock().unwrap();
         assert_eq!(state.bus.agent_count(), 4);
     }

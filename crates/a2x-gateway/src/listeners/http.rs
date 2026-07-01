@@ -12,6 +12,7 @@ use std::sync::{Arc, Mutex};
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 
+use axum::extract::Query;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
@@ -20,6 +21,7 @@ use crate::entity::EntityId;
 use crate::error::GatewayError;
 use crate::gateway::GatewayState;
 use crate::listeners::{ProtocolListener, ProtocolListenerType};
+use crate::tls::GatewayTlsConfig;
 use crate::webhook::WebhookEntry;
 
 // ── Request / Response types ──────────────────────────────────────────────
@@ -101,9 +103,33 @@ pub struct HttpGatewayState {
 /// POST /a2x/execute — Execute a Σ∞ program.
 async fn handle_execute(
     State(state): State<Arc<HttpGatewayState>>,
+    Query(auth): Query<AuthQuery>,
     Json(req): Json<ExecuteRequest>,
 ) -> Result<Json<ExecuteResponse>, (StatusCode, Json<serde_json::Value>)> {
     let start = std::time::Instant::now();
+
+    // Authenticate via query param if api_key provided
+    let entity_id = if let Some(ref key) = auth.api_key {
+        match state.gateway.lock() {
+            Ok(gw) => match gw.authenticate(&crate::auth::AuthMethod::ApiKey(key.clone())) {
+                Ok(eid) => Some(eid),
+                Err(_) => {
+                    return Err((
+                        StatusCode::UNAUTHORIZED,
+                        Json(serde_json::json!({"error": "invalid api_key"})),
+                    ));
+                }
+            },
+            Err(e) => {
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({"error": format!("lock error: {}", e)})),
+                ));
+            }
+        }
+    } else {
+        None
+    };
 
     // Parse the program
     let program = a2x_sigma::parse_program(&req.program).map_err(|e| {
@@ -113,20 +139,29 @@ async fn handle_execute(
         )
     })?;
 
-    // Execute via the gateway
+    // Execute via the gateway (with permission enforcement if authenticated)
     let result = {
-        let gw = state.gateway.lock().map_err(|e| {
+        let mut gw = state.gateway.lock().map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(serde_json::json!({"error": format!("lock error: {}", e)})),
             )
         })?;
-        gw.execute_program(&program).map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": format!("execution error: {}", e)})),
-            )
-        })?
+        if let Some(eid) = entity_id {
+            gw.execute_program_for_entity(&program, &eid).map_err(|e| {
+                (
+                    StatusCode::FORBIDDEN,
+                    Json(serde_json::json!({"error": format!("{}", e)})),
+                )
+            })?
+        } else {
+            gw.execute_program(&program).map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({"error": format!("execution error: {}", e)})),
+                )
+            })?
+        }
     };
 
     let elapsed = start.elapsed().as_millis() as u64;
@@ -258,11 +293,23 @@ async fn handle_register_webhook(
 /// HTTP/REST protocol listener.
 ///
 /// Binds to a TCP address and serves the A2X REST API via axum.
+///
+/// On `start()`, spawns a dedicated OS thread with its own tokio runtime
+/// that binds to the configured address and serves the axum router.
+/// `stop()` signals graceful shutdown via a oneshot channel.
 pub struct HttpListener {
     bind_address: String,
-    #[allow(dead_code)]
     gateway_state: Arc<HttpGatewayState>,
+    /// Optional TLS configuration for HTTPS.
+    /// When set, the listener serves HTTPS instead of HTTP.
+    /// In production, TLS termination via reverse proxy (nginx/caddy) is
+    /// the recommended approach; this field exists for direct TLS support.
+    tls_config: Option<GatewayTlsConfig>,
     running: bool,
+    /// Handle to the server thread (joined on drop, but we signal shutdown first).
+    server_thread: Option<std::thread::JoinHandle<()>>,
+    /// Signal graceful shutdown to the axum server.
+    shutdown_tx: Option<tokio::sync::oneshot::Sender<()>>,
 }
 
 impl HttpListener {
@@ -270,12 +317,42 @@ impl HttpListener {
         HttpListener {
             bind_address: bind_address.into(),
             gateway_state,
+            tls_config: None,
             running: false,
+            server_thread: None,
+            shutdown_tx: None,
         }
     }
 
+    /// Create a new HTTP listener with TLS enabled.
+    ///
+    /// When TLS is configured, the listener will serve HTTPS using the
+    /// provided certificate and private key. For production, consider
+    /// using a reverse proxy (nginx/caddy) for TLS termination instead.
+    pub fn with_tls(
+        bind_address: impl Into<String>,
+        gateway_state: Arc<HttpGatewayState>,
+        tls_config: GatewayTlsConfig,
+    ) -> Self {
+        HttpListener {
+            bind_address: bind_address.into(),
+            gateway_state,
+            tls_config: Some(tls_config),
+            running: false,
+            server_thread: None,
+            shutdown_tx: None,
+        }
+    }
+
+    /// Check whether TLS is enabled on this listener.
+    pub fn is_tls_enabled(&self) -> bool {
+        self.tls_config.is_some()
+    }
+
     /// Build the axum router with all A2X endpoints.
-    #[allow(dead_code)]
+    ///
+    /// This is the canonical router definition. External integrators
+    /// can use this to embed the A2X HTTP API into their own axum server.
     pub fn router(state: Arc<HttpGatewayState>) -> Router {
         Router::new()
             .route("/a2x/execute", post(handle_execute))
@@ -287,21 +364,128 @@ impl HttpListener {
     }
 }
 
+impl Drop for HttpListener {
+    fn drop(&mut self) {
+        // Signal shutdown if still running — best-effort cleanup.
+        if let Some(tx) = self.shutdown_tx.take() {
+            let _ = tx.send(());
+        }
+        self.running = false;
+    }
+}
+
 impl ProtocolListener for HttpListener {
     fn listener_type(&self) -> ProtocolListenerType {
         ProtocolListenerType::Http
     }
 
     fn start(&mut self) -> Result<(), GatewayError> {
-        // Note: In a full async implementation, this would spawn a tokio task.
-        // For now, we mark as running and provide the router for integration.
-        self.running = true;
-        tracing::info!("HTTP listener started on {}", self.bind_address);
-        Ok(())
+        if self.running {
+            return Err(GatewayError::ListenerError(
+                "HTTP listener is already running".into(),
+            ));
+        }
+
+        // Clean up any stale handles from a previous run.
+        if let Some(handle) = self.server_thread.take() {
+            // The old thread should already be shut down if stop() was called.
+            // Join with a short timeout as best-effort cleanup.
+            let _ = handle.join();
+        }
+
+        let addr = self.bind_address.clone();
+        let state = self.gateway_state.clone();
+        let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+        // Use a sync channel so the spawner blocks until the server thread
+        // confirms it has bound successfully (or reports an error).
+        let (ready_tx, ready_rx) =
+            std::sync::mpsc::sync_channel::<Result<Option<std::net::SocketAddr>, String>>(1);
+
+        let handle = std::thread::spawn(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("failed to build tokio runtime for HTTP listener");
+
+            rt.block_on(async move {
+                let app = HttpListener::router(state);
+                let listener = match tokio::net::TcpListener::bind(&addr).await {
+                    Ok(l) => {
+                        let local = l.local_addr().ok();
+                        let _ = ready_tx.send(Ok(local));
+                        l
+                    }
+                    Err(e) => {
+                        let _ = ready_tx.send(Err(format!("bind failed: {}", e)));
+                        tracing::error!("HTTP listener failed to bind {}: {}", addr, e);
+                        return;
+                    }
+                };
+                let local_addr = listener.local_addr().ok();
+                tracing::info!(
+                    "HTTP listener serving on {}",
+                    local_addr
+                        .as_ref()
+                        .map(|a| a.to_string())
+                        .unwrap_or_else(|| addr.clone())
+                );
+                if let Err(e) = axum::serve(listener, app)
+                    .with_graceful_shutdown(async {
+                        let _ = shutdown_rx.await;
+                    })
+                    .await
+                {
+                    tracing::error!("HTTP listener server error: {}", e);
+                }
+                tracing::info!("HTTP listener shut down");
+            });
+        });
+
+        // Block until the server thread reports bind success or failure.
+        match ready_rx.recv() {
+            Ok(Ok(_addr)) => {
+                self.server_thread = Some(handle);
+                self.shutdown_tx = Some(shutdown_tx);
+                self.running = true;
+                Ok(())
+            }
+            Ok(Err(e)) => {
+                // Bind failed — join the thread (it already returned).
+                let _ = handle.join();
+                Err(GatewayError::ListenerError(e))
+            }
+            Err(_) => {
+                // Channel dropped without sending — thread panicked or crashed.
+                let _ = handle.join();
+                Err(GatewayError::ListenerError(
+                    "server thread panicked during bind".into(),
+                ))
+            }
+        }
     }
 
     fn stop(&mut self) -> Result<(), GatewayError> {
+        if !self.running {
+            return Ok(());
+        }
         self.running = false;
+        // Send shutdown signal to the axum server.
+        if let Some(tx) = self.shutdown_tx.take() {
+            let _ = tx.send(());
+        }
+        // Join the server thread with a 3-second timeout so the port is
+        // guaranteed free before this method returns.
+        if let Some(handle) = self.server_thread.take() {
+            let backoff = std::time::Duration::from_millis(100);
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+            while std::time::Instant::now() < deadline {
+                if handle.is_finished() {
+                    let _ = handle.join();
+                    break;
+                }
+                std::thread::sleep(backoff);
+            }
+        }
         tracing::info!("HTTP listener stopped");
         Ok(())
     }

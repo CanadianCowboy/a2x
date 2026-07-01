@@ -40,15 +40,18 @@ This project is built **interactively**. The user (Josh) wants every AI assistan
 
 ### Project Status
 
-- [x] PLAN.md written (30 sections + Appendices + Deep Design)
-- [x] 15 sub-plans in `plans/` covering all subsystems
-- [x] Git initialized
-- [x] README.md with AI context + ColdStart Coding-Grade standard
-- [x] CONTRIBUTING.md with AI-friendly contribution guide
-- [x] Cargo workspace scaffolded with all 10 crates
-- [x] `a2x-core` fully implemented (zero-dependency, 25 tests, clippy clean)
-- [x] All 9 remaining crates scaffolded as stubs
-- [ ] **Next:** implement `a2x-sigma` (tokenizer, parser, operator tables, SigmaPacket)
+**Current version:** v0.6.0 (499 tests, all 10 crates passing)
+
+- [x] Phase 0 — Scaffold & Core: Workspace, all 10 crates, a2x-core fully implemented
+- [x] Phase 1 — Σ∞ Protocol Core: Tokenizer, parser, operator tables, SigmaProgram, fuzz tests
+- [x] Phase 2 — CCS Cognitive Substrate: WorldGraph, StateField, MemoryTrace, all 7 operators, VM loop
+- [x] Phase 3 — Ω Latent Protocol: OmegaPacket, compiler pipeline (7 stages), TCP transport, cross-machine tests
+- [x] Phase 4 — Training & Learning: Learned encoder/decoder, simulated environment, training loop
+- [x] Phase 5 — Probe & Debug: Probe protocol, breakpoints, tracer, inspector, probe CLI
+- [x] Phase 6 — Entity Gateway: Gateway service, 4 protocol listeners, auth, client SDK
+- [🔄] Phase 7 — Concurrency: Async bus, async VM, parallel swarm, scheduler (in progress)
+
+See [work-reports/2026-06-29-comprehensive-audit.md](work-reports/2026-06-29-comprehensive-audit.md) for full audit and roadmap.
 
 ### Work Reports
 
