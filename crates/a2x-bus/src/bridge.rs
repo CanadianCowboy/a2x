@@ -5,7 +5,7 @@
 
 use crate::bus::{Bus, BusError};
 use crate::discovery::{AgentInfo, DiscoveryError};
-use crate::transport::Transport;
+use crate::transport::{InMemoryTransport, Transport};
 use crate::wire::{MessageType, WireMessage};
 use a2x_core::{AgentId, AgentType, Capability};
 use a2x_sigma::{ContextField, ContextOp, DataField, DataOp, IntentField, IntentOp, SigmaPacket};
@@ -15,6 +15,8 @@ use a2x_sigma::{ContextField, ContextOp, DataField, DataOp, IntentField, IntentO
 /// - Agent identity management
 /// - Domain event → Σ∞ packet construction (intent/context mapping)
 /// - Message polling
+///
+/// Generic over the [`Transport`] backend with a default of [`InMemoryTransport`].
 ///
 /// # Example
 ///
@@ -32,15 +34,15 @@ use a2x_sigma::{ContextField, ContextOp, DataField, DataOp, IntentField, IntentO
 /// // Poll for incoming messages
 /// let msgs = bridge.poll().unwrap();
 /// ```
-pub struct BusBridge {
-    bus: Bus,
+pub struct BusBridge<T: Transport = InMemoryTransport> {
+    bus: Bus<T>,
     agent_id: AgentId,
     correlation_counter: u64,
 }
 
-impl BusBridge {
+impl<T: Transport> BusBridge<T> {
     /// Create a new bridge wrapping the given bus, identified by `agent_id`.
-    pub fn new(bus: Bus, agent_id: AgentId) -> Self {
+    pub fn new(bus: Bus<T>, agent_id: AgentId) -> Self {
         BusBridge {
             bus,
             agent_id,
@@ -172,12 +174,12 @@ impl BusBridge {
     }
 
     /// Immutable reference to the underlying [`Bus`].
-    pub fn bus(&self) -> &Bus {
+    pub fn bus(&self) -> &Bus<T> {
         &self.bus
     }
 
     /// Mutable reference to the underlying [`Bus`] (for advanced use).
-    pub fn bus_mut(&mut self) -> &mut Bus {
+    pub fn bus_mut(&mut self) -> &mut Bus<T> {
         &mut self.bus
     }
 

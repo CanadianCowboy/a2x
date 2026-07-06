@@ -8,13 +8,26 @@ use a2x_core::{AgentId, Capability};
 use a2x_sigma::SigmaPacket;
 
 /// The A2X message bus — routes Σ∞/Ω programs between agents.
-pub struct Bus {
-    transport: InMemoryTransport,
+///
+/// Generic over the [`Transport`] backend with a default of [`InMemoryTransport`]
+/// for zero-config local usage. For TCP or custom transports, use
+/// [`Bus::with_transport`].
+///
+/// # Examples
+///
+/// ```
+/// use a2x_bus::Bus;
+/// let bus = Bus::new(); // defaults to InMemoryTransport
+/// ```
+pub struct Bus<T: Transport = InMemoryTransport> {
+    transport: T,
     discovery: InMemoryDiscovery,
     router: Router,
 }
 
-impl Bus {
+/// Constructors for the default [`InMemoryTransport`] backend.
+impl Bus<InMemoryTransport> {
+    /// Create a new bus with the default in-memory transport.
     pub fn new() -> Self {
         Bus {
             transport: InMemoryTransport::new(),
@@ -23,9 +36,32 @@ impl Bus {
         }
     }
 
+    /// Create a new bus with a specific routing strategy (in-memory transport).
     pub fn with_strategy(strategy: RoutingStrategy) -> Self {
         Bus {
             transport: InMemoryTransport::new(),
+            discovery: InMemoryDiscovery::new(),
+            router: Router::new(strategy),
+        }
+    }
+}
+
+impl<T: Transport> Bus<T> {
+    /// Create a bus with a custom transport backend.
+    ///
+    /// Use this for TCP, TLS, or other transport implementations.
+    pub fn with_transport(transport: T) -> Self {
+        Bus {
+            transport,
+            discovery: InMemoryDiscovery::new(),
+            router: Router::new(RoutingStrategy::FirstMatch),
+        }
+    }
+
+    /// Create a bus with a custom transport and routing strategy.
+    pub fn with_transport_and_strategy(transport: T, strategy: RoutingStrategy) -> Self {
+        Bus {
+            transport,
             discovery: InMemoryDiscovery::new(),
             router: Router::new(strategy),
         }
@@ -102,12 +138,12 @@ impl Bus {
     }
 
     /// Mutable reference to the transport layer (for advanced/raw sends).
-    pub fn transport_mut(&mut self) -> &mut InMemoryTransport {
+    pub fn transport_mut(&mut self) -> &mut T {
         &mut self.transport
     }
 }
 
-impl Default for Bus {
+impl Default for Bus<InMemoryTransport> {
     fn default() -> Self {
         Self::new()
     }
@@ -173,5 +209,39 @@ mod tests {
         assert_eq!(msgs.len(), 1);
         assert_eq!(msgs[0].sender, sender);
         assert_eq!(msgs[0].msg_type, MessageType::SigmaProgram);
+    }
+
+    #[test]
+    fn test_with_transport_equivalent_to_new() {
+        // A bus created with with_transport should behave identically to Bus::new().
+        let mut bus = Bus::with_transport(InMemoryTransport::new());
+        let receiver = AgentId::new("cli-2");
+
+        bus.register_agent(AgentInfo::new(
+            receiver.clone(),
+            AgentType::Cli,
+            vec![Capability::Execute],
+        ))
+        .unwrap();
+
+        let packet = SigmaPacket::new();
+        bus.send_sigma(&AgentId::new("orch-2"), &packet, &Capability::Execute, 1)
+            .unwrap();
+
+        let msgs = bus.receive(&receiver).unwrap();
+        assert_eq!(msgs.len(), 1);
+    }
+
+    #[test]
+    fn test_with_transport_and_strategy() {
+        let mut bus =
+            Bus::with_transport_and_strategy(InMemoryTransport::new(), RoutingStrategy::FirstMatch);
+        bus.register_agent(AgentInfo::new(
+            AgentId::new("a3"),
+            AgentType::Cli,
+            vec![Capability::Execute],
+        ))
+        .unwrap();
+        assert_eq!(bus.agent_count(), 1);
     }
 }
