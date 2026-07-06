@@ -100,6 +100,11 @@ impl Bus {
     pub fn discover(&self, filter: &AgentFilter) -> Vec<AgentInfo> {
         self.discovery.discover(filter)
     }
+
+    /// Mutable reference to the transport layer (for advanced/raw sends).
+    pub fn transport_mut(&mut self) -> &mut InMemoryTransport {
+        &mut self.transport
+    }
 }
 
 impl Default for Bus {

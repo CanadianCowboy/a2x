@@ -100,6 +100,17 @@ pub struct HttpGatewayState {
 
 // ── HTTP handlers ─────────────────────────────────────────────────────────
 
+/// GET /healthz — Liveness probe.
+async fn handle_healthz() -> (StatusCode, &'static str) {
+    (StatusCode::OK, "ok")
+}
+
+/// GET /readyz — Readiness probe.
+async fn handle_readyz(State(_): State<Arc<HttpGatewayState>>) -> (StatusCode, &'static str) {
+    // For now, if the server is running and we can receive state, we are "ready".
+    (StatusCode::OK, "ready")
+}
+
 /// POST /a2x/execute — Execute a Σ∞ program.
 async fn handle_execute(
     State(state): State<Arc<HttpGatewayState>>,
@@ -360,6 +371,8 @@ impl HttpListener {
             .route("/a2x/entities/{entity_id}", get(handle_get_entity))
             .route("/a2x/probe/{agent_id}", get(handle_probe))
             .route("/a2x/webhook", post(handle_register_webhook))
+            .route("/healthz", get(handle_healthz))
+            .route("/readyz", get(handle_readyz))
             .with_state(state)
     }
 }

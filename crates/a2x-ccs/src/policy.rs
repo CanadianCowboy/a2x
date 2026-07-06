@@ -130,7 +130,6 @@ impl PolicyField for StubPolicy {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use a2x_core::graph::GraphQuery;
 
     #[test]
     fn test_stub_policy_constructs() {
@@ -148,7 +147,6 @@ mod tests {
         // This test uses mock implementations from upstream crates.
         // For now, verify construction — integration tests cover evaluate().
         let policy = HeuristicPolicy::new();
-        assert!(true, "heuristic policy created");
         let _ = policy;
     }
 }

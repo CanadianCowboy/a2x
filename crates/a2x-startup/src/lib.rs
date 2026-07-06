@@ -3,10 +3,12 @@
 // See plans/11-startup-shutdown.md for the full design specification.
 //
 // Modules:
+//   boot.rs        — BootSequence with ordered BootPhase execution
 //   config.rs      — A2xConfig loading from ~/.a2x/, directory creation, first-run setup
 //   shutdown.rs    — ShutdownManager with hooks, graceful timeout, PID file
 //   persistence.rs — Atomic state save/load with Blake3 checksums
 
+pub mod boot;
 pub mod config;
 pub mod key_rotation;
 pub mod persistence;
@@ -15,6 +17,7 @@ pub mod secure_storage;
 pub mod shutdown;
 
 // Re-exports
+pub use boot::{standard_boot_order, BootError, BootPhase, BootSequence, PhaseResult};
 pub use config::A2xConfig;
 pub use persistence::{
     load_state, load_state_atomic, save_state, save_state_atomic, StateSaveError,

@@ -22,6 +22,7 @@ toml = { workspace = true }
 tracing = { workspace = true }
 anyhow = { workspace = true }
 uuid = { workspace = true }
+ctrlc = "3"
 rustls = { workspace = true, optional = true }
 
 [features]
@@ -35,3 +36,7 @@ reqwest = { workspace = true }
 [lib]
 name = "a2x_gateway"
 path = "src/lib.rs"
+
+[[bin]]
+name = "a2x-gatewayd"
+path = "src/bin/a2x-gatewayd.rs"

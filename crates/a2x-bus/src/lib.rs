@@ -1,6 +1,7 @@
 // a2x-bus — Message bus, routing, transport, agent discovery
 // See plans/04-bus.md
 
+pub mod bridge;
 pub mod bus;
 pub mod discovery;
 pub mod routing;
@@ -25,6 +26,7 @@ pub mod async_tcp;
 pub mod identity;
 
 // Re-export key types
+pub use bridge::{event_to_sigma, BusBridge};
 pub use bus::{Bus, BusError};
 pub use discovery::{
     AgentCard, AgentFilter, AgentHandshake, AgentInfo, Discovery, DiscoveryError, InMemoryDiscovery,

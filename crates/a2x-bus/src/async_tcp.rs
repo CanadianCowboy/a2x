@@ -302,7 +302,7 @@ mod tests {
     fn test_send_and_receive_over_localhost() {
         rt().block_on(async {
             let mut bridge = TcpAsyncBridge::new();
-            let mut rx = bridge.bind("127.0.0.1:0").await.unwrap();
+            let rx = bridge.bind("127.0.0.1:0").await.unwrap();
 
             // Get the bound address from a separate bind to find a port.
             // Actually we can't get the address from the bridge directly.

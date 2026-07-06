@@ -73,6 +73,21 @@ pub enum MessageType {
     Heartbeat,
 }
 
+impl MessageType {
+    /// Stable string representation for routing/dispatch (not Debug).
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            MessageType::SigmaProgram => "sigma_program",
+            MessageType::OmegaProgram => "omega_program",
+            MessageType::Announce => "announce",
+            MessageType::ProgramRequest(_) => "program_request",
+            MessageType::ProgramResponse { .. } => "program_response",
+            MessageType::Error(_) => "error",
+            MessageType::Heartbeat => "heartbeat",
+        }
+    }
+}
+
 /// Simple wire-level error.
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

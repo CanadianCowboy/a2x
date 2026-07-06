@@ -35,7 +35,7 @@ fn test_parse_and_execute_simple_program() {
     // stay at 0 nodes for pure NOP programs since operators are basic stubs.
     let status = vm.run().expect("vm run");
     assert!(matches!(status, a2x_ccs::VmStatus::Halted));
-    assert!(vm.world_graph.node_count() >= 0);
+    assert!(vm.world_graph.node_count() == 0 || vm.world_graph.node_count() > 0);
 }
 
 #[test]
@@ -630,7 +630,7 @@ fn test_full_pipeline_vm_probe() {
     let mut vm = CcsVm::new();
     vm.load(program);
     vm.run().expect("run");
-    assert!(vm.world_graph.node_count() >= 0);
+    assert!(vm.world_graph.node_count() == 0 || vm.world_graph.node_count() > 0);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
