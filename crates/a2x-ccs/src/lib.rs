@@ -51,5 +51,5 @@ pub use safety::{SafetyClassification, SafetyConstraints, SafetyLevel};
 pub use state::{init_default_regions, FlatStateField, StateRegion};
 #[cfg(feature = "ndarray")]
 pub use state_ndarray::{init_ndarray_default_regions, NdArrayStateField};
-pub use vm::{CcsVm, VmLimits, VmStatus};
+pub use vm::{CcsVm, VmLimits, VmSnapshot, VmStatus};
 pub use world_graph::PetgraphWorldGraph;

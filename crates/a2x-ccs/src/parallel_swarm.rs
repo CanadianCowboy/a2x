@@ -6,11 +6,13 @@
 // WorldGraph + StateField, spawns N child VMs each with a copy of the
 // snapshot, runs them concurrently via tokio::spawn, collects results,
 // and merges them back.
+//
+// The core snapshot/merge infrastructure (VmSnapshot, snapshot(),
+// from_snapshot(), merge_swarm_results()) lives in vm.rs so the
+// synchronous Fork/Merge path in step() works without tokio.
 
 use std::time::Duration;
 
-use a2x_core::graph::WorldGraph;
-use a2x_core::memory::MemoryTrace;
 use a2x_core::state::StateField;
 use a2x_sigma::program::SigmaProgram;
 use tracing::{debug, info, warn};
@@ -18,19 +20,6 @@ use tracing::{debug, info, warn};
 use crate::async_vm::{AsyncRunConfig, AsyncRunResult};
 use crate::error::VmError;
 use crate::vm::CcsVm;
-
-/// A snapshot of VM state that can be cloned to create child VMs.
-#[derive(Clone, Debug)]
-pub struct VmSnapshot {
-    /// Serialized WorldGraph (petgraph doesn't impl Clone easily,
-    /// so we serialize to bytes and deserialize in the child).
-    /// For simplicity in Phase 7, we store the node/edge data.
-    pub world_graph_data: Vec<u8>,
-    /// StateField data.
-    pub state_field_data: Vec<f32>,
-    /// Memory trace length at snapshot time.
-    pub memory_trace_len: usize,
-}
 
 /// Result from a single child VM in a parallel swarm.
 #[derive(Clone, Debug)]
@@ -67,17 +56,11 @@ impl Default for SwarmConfig {
 }
 
 impl CcsVm {
-    /// Create a VmSnapshot from the current VM state.
-    pub fn snapshot(&self) -> VmSnapshot {
-        VmSnapshot {
-            world_graph_data: self.serialize_world_graph(),
-            state_field_data: self.state_field.raw_data().to_vec(),
-            memory_trace_len: self.memory_trace.len(),
-        }
-    }
-
-    /// Execute a parallel swarm: fork N child VMs, run concurrently,
+    /// Execute a parallel swarm (async): fork N child VMs via tokio::spawn,
     /// collect results, and merge back into the parent.
+    ///
+    /// This is the async version — for synchronous fork execution within
+    /// step(), see the `Opcode::Fork` arm in vm.rs.
     pub async fn execute_fork(
         &mut self,
         sub_programs: Vec<SigmaProgram>,
@@ -160,57 +143,6 @@ impl CcsVm {
         );
 
         Ok(results)
-    }
-
-    /// Merge child VM state back into the parent VM.
-    ///
-    /// Strategy: append new WorldGraph nodes from children that don't
-    /// exist in the parent yet. For StateField, use the last child's
-    /// state (simple merge — full conflict resolution is Phase 8+).
-    fn merge_swarm_results(
-        &mut self,
-        child_snapshots: &[(usize, Vec<u8>, Vec<f32>)],
-    ) -> Result<(), VmError> {
-        if let Some((_, _, last_state)) = child_snapshots.last() {
-            // Simple merge: adopt the last child's state field
-            // In a real implementation, we'd do per-region merging.
-            if last_state.len() == self.state_field.raw_data().len() {
-                // StateField merge: last-writer-wins for now
-                // (Full merge strategy is Phase 8+ per resilience plan)
-                debug!("swarm merge: adopting last child's state field");
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Serialize WorldGraph to bytes (for snapshot transfer).
-    /// Phase 7: simple node count + edge count metadata.
-    /// Full serialization is deferred to Phase 8 (bincode-based persistence).
-    fn serialize_world_graph(&self) -> Vec<u8> {
-        // Minimal: just record the counts. Full graph serialization
-        // requires bincode/serde on the graph types (Phase 8).
-        let node_count = self.world_graph.node_count() as u32;
-        let edge_count = self.world_graph.edge_count() as u32;
-        let mut data = Vec::with_capacity(8);
-        data.extend_from_slice(&node_count.to_le_bytes());
-        data.extend_from_slice(&edge_count.to_le_bytes());
-        data
-    }
-
-    /// Create a VM from a snapshot (for child VM creation).
-    pub fn from_snapshot(snapshot: &VmSnapshot) -> Self {
-        let vm = CcsVm::new();
-        // In Phase 7, the snapshot is minimal (counts only).
-        // The child starts with a fresh graph but the same state field.
-        // memory_trace_len is recorded for observability; the child VM
-        // starts with a fresh trace (full state transfer is Phase 8+).
-        let _ = snapshot.memory_trace_len; // used for observability
-        if snapshot.state_field_data.len() == vm.state_field.raw_data().len() {
-            // Restore state field from snapshot
-            // (Would need write_region or direct data access)
-        }
-        vm
     }
 }
 

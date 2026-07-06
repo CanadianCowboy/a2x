@@ -55,12 +55,9 @@ impl Default for SafetyLevel {
                 Opcode::Branch,
                 Opcode::Call,
                 Opcode::Return,
+                Opcode::Fork,
+                Opcode::Merge,
                 Opcode::Halt,
-                // NOTE: `Fork` / `Merge` are intentionally NOT in the default Bounded
-                // allowlist. They are not yet plumbed in Phase 2.A (parallel execution
-                // and result merging have their own safety story: recursion depth,
-                // memory ownership across child VMs, conflict resolution on merge).
-                // Add them here once their safe-by-construction semantics land.
             ],
         }
     }

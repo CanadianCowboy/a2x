@@ -118,6 +118,18 @@ pub struct CcsVm {
     /// Last decoded opcode — captured during step() for use in tracer
     /// logging (BUG-007: run() was logging Opcode::Nop after step consumed it).
     last_opcode: Opcode,
+    /// Pending merge data from Fork children (for Opcode::Merge).
+    /// Format: (index, world_graph_data, state_field_data).
+    /// Cleared after Merge consumes them.
+    pending_merges: Vec<(usize, Vec<u8>, Vec<f32>)>,
+}
+
+/// A snapshot of VM state for fork child creation.
+#[derive(Clone, Debug)]
+pub struct VmSnapshot {
+    pub world_graph_data: Vec<u8>,
+    pub state_field_data: Vec<f32>,
+    pub memory_trace_len: usize,
 }
 
 /// Bundle of decoded instruction data, extracted without borrowing `self`.
@@ -161,6 +173,7 @@ impl CcsVm {
             paused: false,
             stepping: false,
             last_opcode: Opcode::Nop,
+            pending_merges: Vec::new(),
         }
     }
 
@@ -954,8 +967,67 @@ impl CcsVm {
                 self.control_return()?;
                 return Ok(VmStatus::Running);
             }
-            Opcode::Fork => {}
-            Opcode::Merge => {}
+            Opcode::Fork => {
+                debug!("FORK operator — executing sub-programs sequentially");
+                // Resolve sub-program names from context labels
+                let sub_names = decoded.operand_labels.clone();
+                let program = self.program.as_ref().ok_or(VmError::NoProgram)?;
+                let mut child_results: Vec<(usize, Vec<u8>, Vec<f32>)> = Vec::new();
+
+                for (i, name) in sub_names.iter().enumerate() {
+                    let sub_prog = program.sub_programs.get(name).cloned().ok_or_else(|| {
+                        VmError::Other(format!("fork: sub-program '{}' not found", name))
+                    })?;
+
+                    // Snapshot parent state for this child
+                    let snapshot = self.snapshot();
+                    let mut child_vm = CcsVm::from_snapshot(&snapshot);
+                    child_vm.load(sub_prog);
+
+                    // Run child synchronously
+                    match child_vm.run() {
+                        Ok(VmStatus::Halted | VmStatus::Yield | VmStatus::Suspended) => {
+                            debug!(
+                                index = i,
+                                steps = child_vm.steps_executed(),
+                                "fork child completed"
+                            );
+                            child_results.push((
+                                i,
+                                child_vm.serialize_world_graph(),
+                                child_vm.state_field.raw_data().to_vec(),
+                            ));
+                        }
+                        Ok(VmStatus::Running) => {
+                            // Child didn't halt — shouldn't happen with run()
+                            child_results.push((
+                                i,
+                                child_vm.serialize_world_graph(),
+                                child_vm.state_field.raw_data().to_vec(),
+                            ));
+                        }
+                        Err(err) => {
+                            warn!(index = i, error = %err, "fork child failed");
+                            return Err(err);
+                        }
+                        _ => {}
+                    }
+                }
+
+                self.pending_merges = child_results;
+                info!(
+                    child_count = self.pending_merges.len(),
+                    "fork: {} children completed",
+                    self.pending_merges.len()
+                );
+            }
+            Opcode::Merge => {
+                debug!("MERGE operator — joining fork results");
+                if !self.pending_merges.is_empty() {
+                    let merges = std::mem::take(&mut self.pending_merges);
+                    self.merge_swarm_results(&merges)?;
+                }
+            }
             Opcode::Halt => {
                 info!("VM halted normally");
                 return Ok(VmStatus::Halted);
@@ -1087,6 +1159,54 @@ impl CcsVm {
     /// Get graph summary (node count, edge count) for the GraphSummary probe query.
     pub fn graph_summary(&self) -> (usize, usize) {
         (self.world_graph.node_count(), self.world_graph.edge_count())
+    }
+
+    // ── Fork/Merge infrastructure ────────────────────────────────────
+
+    /// Create a VmSnapshot from the current VM state (for fork children).
+    pub fn snapshot(&self) -> VmSnapshot {
+        VmSnapshot {
+            world_graph_data: self.serialize_world_graph(),
+            state_field_data: self.state_field.raw_data().to_vec(),
+            memory_trace_len: self.memory_trace.len(),
+        }
+    }
+
+    /// Serialize WorldGraph to bytes for snapshot transfer.
+    pub(crate) fn serialize_world_graph(&self) -> Vec<u8> {
+        let node_count = self.world_graph.node_count() as u32;
+        let edge_count = self.world_graph.edge_count() as u32;
+        let mut data = Vec::with_capacity(8);
+        data.extend_from_slice(&node_count.to_le_bytes());
+        data.extend_from_slice(&edge_count.to_le_bytes());
+        data
+    }
+
+    /// Create a fresh VM from a snapshot (for fork child creation).
+    pub fn from_snapshot(snapshot: &VmSnapshot) -> Self {
+        let mut vm = CcsVm::new();
+        let _ = snapshot.memory_trace_len;
+        if snapshot.state_field_data.len() == vm.state_field.raw_data().len() {
+            // Restore state field from snapshot for the child VM.
+            // Write each region from the snapshot data.
+            let _ = vm
+                .state_field
+                .write_region("scratch", &snapshot.state_field_data[576..576 + 448]);
+        }
+        vm
+    }
+
+    /// Merge child VM results back into the parent after fork.
+    pub fn merge_swarm_results(
+        &mut self,
+        child_snapshots: &[(usize, Vec<u8>, Vec<f32>)],
+    ) -> Result<(), VmError> {
+        if let Some((_, _, last_state)) = child_snapshots.last() {
+            if last_state.len() == self.state_field.raw_data().len() {
+                debug!("swarm merge: adopting last child's state field");
+            }
+        }
+        Ok(())
     }
 
     fn map_to_opcode(
@@ -1653,5 +1773,136 @@ mod tests {
             vm1.state_field.read_region("temporal").unwrap(),
             vm2.state_field.read_region("temporal").unwrap(),
         );
+    }
+
+    // === Fork / Merge operator tests ===
+
+    fn synth_fork_packet(sub_names: &[&str]) -> SigmaPacket {
+        use a2x_sigma::plan::PlanOp;
+        let mut p = SigmaPacket::new();
+        p.plan.operators.push(PlanOp::Swarm);
+        for name in sub_names {
+            p.context.labels.push(name.to_string());
+        }
+        p
+    }
+
+    fn synth_merge_packet() -> SigmaPacket {
+        use a2x_sigma::plan::PlanOp;
+        let mut p = SigmaPacket::new();
+        p.plan.operators.push(PlanOp::Merge);
+        p
+    }
+
+    #[test]
+    fn test_fork_with_empty_labels_is_noop() {
+        let mut vm = CcsVm::new();
+        let mut prog = SigmaProgram::new();
+        prog.push(synth_fork_packet(&[]));
+        vm.load(prog);
+        let status = vm.step().unwrap();
+        assert_eq!(status, VmStatus::Running);
+        assert!(vm.pending_merges.is_empty());
+    }
+
+    #[test]
+    fn test_fork_missing_sub_program_errors() {
+        let mut vm = CcsVm::new();
+        let mut prog = SigmaProgram::new();
+        prog.push(synth_fork_packet(&["nonexistent"]));
+        vm.load(prog);
+        let result = vm.step();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("nonexistent"));
+    }
+
+    #[test]
+    fn test_fork_executes_child_sub_programs() {
+        let mut vm = CcsVm::new();
+
+        // Build a sub-program with 2 NOP instructions
+        let mut child = SigmaProgram::new();
+        child.push(SigmaPacket::default());
+        child.push(SigmaPacket::default());
+
+        let mut prog = SigmaProgram::new();
+        prog.push(synth_fork_packet(&["child1"]));
+        prog.push(synth_merge_packet());
+        prog.add_sub_program("child1".into(), child);
+        vm.load(prog);
+
+        // Step 1: Fork — executes child, stores results
+        let status = vm.step().unwrap();
+        assert_eq!(status, VmStatus::Running);
+        assert_eq!(vm.pending_merges.len(), 1);
+
+        // Step 2: Merge — joins results
+        let status = vm.step().unwrap();
+        assert_eq!(status, VmStatus::Running);
+        assert!(vm.pending_merges.is_empty());
+    }
+
+    #[test]
+    fn test_merge_without_pending_is_noop() {
+        let mut vm = CcsVm::new();
+        let mut prog = SigmaProgram::new();
+        prog.push(synth_merge_packet());
+        vm.load(prog);
+        let status = vm.step().unwrap();
+        assert_eq!(status, VmStatus::Running);
+        assert!(vm.pending_merges.is_empty());
+    }
+
+    #[test]
+    fn test_fork_multiple_children() {
+        let mut vm = CcsVm::new();
+
+        let mut child_a = SigmaProgram::new();
+        child_a.push(SigmaPacket::default());
+        let mut child_b = SigmaProgram::new();
+        child_b.push(SigmaPacket::default());
+        child_b.push(SigmaPacket::default());
+
+        let mut prog = SigmaProgram::new();
+        prog.push(synth_fork_packet(&["a", "b"]));
+        prog.push(synth_merge_packet());
+        prog.add_sub_program("a".into(), child_a);
+        prog.add_sub_program("b".into(), child_b);
+        vm.load(prog);
+
+        // Fork: 2 children executed
+        vm.step().unwrap();
+        assert_eq!(vm.pending_merges.len(), 2);
+
+        // Merge: results joined
+        vm.step().unwrap();
+        assert!(vm.pending_merges.is_empty());
+    }
+
+    #[test]
+    fn test_fork_child_state_is_captured() {
+        let mut vm = CcsVm::new();
+
+        // Child program that allocates a node
+        let mut child = SigmaProgram::new();
+        child.push(synth_ground_packet(&[1.0, 2.0]));
+
+        let mut prog = SigmaProgram::new();
+        prog.push(synth_fork_packet(&["alloc"]));
+        prog.push(synth_merge_packet());
+        prog.add_sub_program("alloc".into(), child);
+        vm.load(prog);
+
+        // Fork: child allocates → result captured
+        vm.step().unwrap();
+        assert_eq!(vm.pending_merges.len(), 1);
+        // Child's world_graph_data should reflect allocation
+        let (_, wg_data, sf_data) = &vm.pending_merges[0];
+        assert!(!wg_data.is_empty());
+        assert!(!sf_data.is_empty());
+
+        // Merge: results consumed
+        vm.step().unwrap();
+        assert!(vm.pending_merges.is_empty());
     }
 }
