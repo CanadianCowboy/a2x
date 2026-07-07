@@ -103,6 +103,7 @@ pub fn verify_signed_message(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::wire::{MessageType, WireMessage, WIRE_VERSION};
 
     #[test]
     fn test_generate_identity() {
@@ -115,7 +116,7 @@ mod tests {
     #[test]
     fn test_sign_and_verify() {
         let identity = AgentIdentity::generate(AgentId::new("signer"));
-        let message = "⟦Σ∞⟧⟬I:✦ ∷ C:⟨test⟩⟭".as_bytes();
+        let message = "\u{27E6}\u{03A3}\u{221E}\u{27E7}\u{27EC}I:\u{2726} \u{2237} C:\u{27E8}test\u{27E9}\u{27ED}".as_bytes();
 
         let signature = identity.sign(message);
         let sig_bytes: [u8; 64] = signature.to_bytes();
@@ -175,5 +176,145 @@ mod tests {
             &signed.payload,
             &signed.signature
         ));
+    }
+
+    // ── End-to-end: AgentIdentity + WireMessage signing pipeline ───────
+
+    /// Full E2E pipeline: generate identity → encode WireMessage → sign →
+    /// verify. This is the exact flow Soong Path uses for authenticated
+    /// agent-to-agent communication.
+    #[test]
+    fn test_e2e_signing_pipeline_with_wire_message() {
+        // 1. Two agents generate identities
+        let alice = AgentIdentity::generate(AgentId::new("alice"));
+        let bob = AgentIdentity::generate(AgentId::new("bob"));
+
+        // 2. Alice creates a WireMessage
+        let msg = WireMessage::new(
+            MessageType::SigmaProgram,
+            AgentId::new("alice"),
+            Some(AgentId::new("bob")),
+            1,
+            b"payload".to_vec(),
+        );
+
+        // 3. Alice serializes the message and signs it
+        let serialized = crate::tcp_transport::encode_frame(&msg);
+        let signature = alice.sign(&serialized);
+        let sig_bytes: [u8; 64] = signature.to_bytes();
+
+        // 4. Alice sends a SignedWireMessage with her verifying key
+        //    (first contact — key included)
+        let signed = SignedWireMessage {
+            payload: serialized.clone(),
+            signature: sig_bytes,
+            verifying_key: Some(alice.verifying_key_bytes()),
+        };
+
+        // 5. Bob receives — extracts the verifying key and verifies
+        let bob_vk = VerifyingKey::from_bytes(&signed.verifying_key.unwrap()).unwrap();
+        assert!(
+            verify_signed_message(&bob_vk, &signed.payload, &signed.signature),
+            "Bob should trust Alice's signed message"
+        );
+
+        // 6. Bob decodes the WireMessage from the verified payload
+        let (decoded, _consumed) = crate::tcp_transport::decode_frame(&serialized).unwrap();
+        assert_eq!(decoded.sender, AgentId::new("alice"));
+        assert_eq!(decoded.recipient, Some(AgentId::new("bob")));
+        assert_eq!(decoded.msg_type, MessageType::SigmaProgram);
+        assert_eq!(decoded.version, WIRE_VERSION);
+
+        // 7. Tampering is detected — Eve can't forge a message from Alice
+        let eve = AgentIdentity::generate(AgentId::new("eve"));
+        let forged_payload = crate::tcp_transport::encode_frame(&WireMessage::new(
+            MessageType::Heartbeat,
+            AgentId::new("alice"), // spoofed sender
+            Some(AgentId::new("bob")),
+            99,
+            b"malicious".to_vec(),
+        ));
+        let eve_sig = eve.sign(&forged_payload);
+        let eve_sig_bytes: [u8; 64] = eve_sig.to_bytes();
+        // Bob checks with Alice's key — Eve's signature should fail
+        assert!(
+            !verify_signed_message(&bob_vk, &forged_payload, &eve_sig_bytes),
+            "Eve's signature should NOT verify with Alice's key"
+        );
+    }
+
+    /// Subsequent messages (after first contact) omit the verifying key.
+    /// Bob should already have Alice's key cached and be able to verify.
+    #[test]
+    fn test_e2e_subsequent_message_without_key() {
+        let alice = AgentIdentity::generate(AgentId::new("alice"));
+
+        // Bob has Alice's key from first contact
+        let alice_vk = alice.verifying_key.clone();
+
+        // Alice sends a follow-up message (no verifying_key in SignedWireMessage)
+        let msg2 = WireMessage::new(
+            MessageType::Heartbeat,
+            AgentId::new("alice"),
+            Some(AgentId::new("bob")),
+            2,
+            vec![],
+        );
+        let payload2 = crate::tcp_transport::encode_frame(&msg2);
+        let sig2 = alice.sign(&payload2);
+
+        let signed2 = SignedWireMessage {
+            payload: payload2.clone(),
+            signature: sig2.to_bytes(),
+            verifying_key: None, // subsequent message — key already known
+        };
+
+        // Bob uses his cached copy of Alice's key
+        assert!(verify_signed_message(
+            &alice_vk,
+            &signed2.payload,
+            &signed2.signature
+        ));
+    }
+
+    /// Multiple agents signing and verifying independently.
+    #[test]
+    fn test_e2e_multi_agent_signing() {
+        let agents: Vec<AgentIdentity> = (0..5)
+            .map(|i| AgentIdentity::generate(AgentId::new(format!("agent-{}", i))))
+            .collect();
+
+        let mut messages = Vec::new();
+
+        // Each agent signs a message
+        for agent in &agents {
+            let msg = WireMessage::new(MessageType::Heartbeat, agent.id.clone(), None, 0, vec![]);
+            let payload = crate::tcp_transport::encode_frame(&msg);
+            let sig = agent.sign(&payload);
+            messages.push((agent, payload, sig.to_bytes()));
+        }
+
+        // Each agent can verify their own message
+        for (agent, payload, sig) in &messages {
+            assert!(verify_signed_message(&agent.verifying_key, payload, sig));
+        }
+
+        // Cross-agent verification: agent-i's signature fails with agent-j's key
+        for i in 0..agents.len() {
+            for j in 0..agents.len() {
+                if i != j {
+                    assert!(
+                        !verify_signed_message(
+                            &agents[j].verifying_key,
+                            &messages[i].1,
+                            &messages[i].2
+                        ),
+                        "agent-{}'s sig should not verify with agent-{}'s key",
+                        i,
+                        j
+                    );
+                }
+            }
+        }
     }
 }

@@ -302,18 +302,152 @@ mod tests {
     fn test_send_and_receive_over_localhost() {
         rt().block_on(async {
             let mut bridge = TcpAsyncBridge::new();
-            let rx = bridge.bind("127.0.0.1:0").await.unwrap();
+            // Bind to port 0 to get an OS-assigned port, then connect send_to
+            // via a second TcpAsyncBridge. We use two bridges: one listens,
+            // the other sends. This verifies real TCP send/receive roundtrip.
 
-            // Get the bound address from a separate bind to find a port.
-            // Actually we can't get the address from the bridge directly.
-            // For an integration test, connect with a well-known approach:
-            // bind a separate listener to find the port, then connect.
+            // Find an available port by binding a standalone listener first
+            let scout = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = scout.local_addr().unwrap();
+            let addr_str = addr.to_string();
+            drop(scout); // release the port so our bridge can grab it
 
-            // Simpler: use bridge's send_to to connect back to itself.
-            // But we need to know the port. Let's just test that the bridge
-            // starts up correctly and handles send errors.
-            drop(rx);
-            bridge.unbind("127.0.0.1:0");
+            let mut rx = bridge.bind(&addr_str).await.unwrap();
+
+            // Send a message from a separate bridge to the listener
+            let msg = WireMessage::new(
+                MessageType::Heartbeat,
+                AgentId::new("sender"),
+                Some(AgentId::new("tcp-receiver")),
+                42,
+                vec![0xAA, 0xBB],
+            );
+            TcpAsyncBridge::send_to(&addr_str, msg.clone())
+                .await
+                .unwrap();
+
+            // Receive the message on the listening side
+            let (recv_agent, recv_msg) =
+                tokio::time::timeout(std::time::Duration::from_secs(2), rx.recv())
+                    .await
+                    .expect("timeout waiting for message")
+                    .expect("channel closed before message received");
+
+            assert_eq!(recv_msg.sender, AgentId::new("sender"));
+            assert_eq!(recv_msg.msg_type, MessageType::Heartbeat);
+            assert_eq!(recv_msg.correlation_id, 42);
+            assert_eq!(recv_msg.payload, vec![0xAA, 0xBB]);
+            assert!(recv_agent.as_str().starts_with("tcp-"));
+
+            bridge.unbind(&addr_str);
+        });
+    }
+
+    #[test]
+    fn test_send_multiple_messages_over_localhost() {
+        rt().block_on(async {
+            let mut bridge = TcpAsyncBridge::new();
+
+            // Scout pattern: bind to port 0 to discover a free port, then
+            // release it so our real bridge can grab it. There is a TOCTOU
+            // race here (another process could grab the port between drop
+            // and bind), but on localhost with a small delay window this
+            // is negligible for tests.
+            let scout = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = scout.local_addr().unwrap().to_string();
+            drop(scout);
+
+            let mut rx = bridge.bind(&addr).await.unwrap();
+
+            // Send three messages — each send_to creates a separate TCP
+            // connection, so ordering across connections is NOT guaranteed.
+            let count = 3u64;
+            for i in 0..count {
+                let msg = WireMessage::new(
+                    MessageType::Heartbeat,
+                    AgentId::new("sender"),
+                    None,
+                    i,
+                    vec![i as u8],
+                );
+                TcpAsyncBridge::send_to(&addr, msg).await.unwrap();
+            }
+
+            // Collect all messages and sort by correlation_id (order is
+            // not guaranteed across separate TCP connections).
+            let mut received: Vec<WireMessage> = Vec::new();
+            for _ in 0..count {
+                let (_agent, msg) =
+                    tokio::time::timeout(std::time::Duration::from_secs(2), rx.recv())
+                        .await
+                        .expect("timeout")
+                        .expect("channel closed");
+                received.push(msg);
+            }
+            received.sort_by_key(|m| m.correlation_id);
+
+            for (i, msg) in received.iter().enumerate() {
+                assert_eq!(msg.correlation_id, i as u64);
+                assert_eq!(msg.payload, vec![i as u8]);
+            }
+
+            bridge.unbind(&addr);
+        });
+    }
+
+    #[test]
+    fn test_many_messages_over_localhost() {
+        rt().block_on(async {
+            let mut bridge = TcpAsyncBridge::new();
+
+            // Scout pattern for port discovery (see comment above).
+            let scout = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = scout.local_addr().unwrap().to_string();
+            drop(scout);
+
+            let mut rx = bridge.bind(&addr).await.unwrap();
+
+            // Send 96 messages — well within channel capacity (128) but
+            // enough to stress the accept/spawn/drain pipeline.
+            let count = 96u64;
+            for i in 0..count {
+                let msg = WireMessage::new(
+                    MessageType::Heartbeat,
+                    AgentId::new("sender"),
+                    None,
+                    i,
+                    vec![],
+                );
+                TcpAsyncBridge::send_to(&addr, msg).await.unwrap();
+            }
+
+            // Drain all messages with timeout and explicit error on failure.
+            let mut received = 0u64;
+            for _ in 0..count {
+                match tokio::time::timeout(std::time::Duration::from_secs(10), rx.recv()).await {
+                    Ok(Some((_, msg))) => {
+                        assert!(
+                            msg.correlation_id < count,
+                            "unexpected correlation_id {} outside 0..{}",
+                            msg.correlation_id,
+                            count
+                        );
+                        received += 1;
+                    }
+                    Ok(None) => {
+                        panic!(
+                            "channel closed after receiving {}/{} messages",
+                            received, count
+                        );
+                    }
+                    Err(_elapsed) => {
+                        panic!("timeout after receiving {}/{} messages", received, count);
+                    }
+                }
+            }
+            assert_eq!(received, count, "all messages should be received");
+
+            bridge.unbind(&addr);
         });
     }
 }

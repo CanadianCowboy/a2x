@@ -18,6 +18,34 @@ use a2x_sigma::{ContextField, ContextOp, DataField, DataOp, IntentField, IntentO
 ///
 /// Generic over the [`Transport`] backend with a default of [`InMemoryTransport`].
 ///
+/// # Lifecycle
+///
+/// 1. **Create** a [`Bus`] and wrap it with `BusBridge::new(bus, agent_id)`
+/// 2. **Register** the bridge agent on the bus via [`register`](BusBridge::register)
+/// 3. **Publish** messages via [`publish_event`](BusBridge::publish_event),
+///    [`publish_sigma`](BusBridge::publish_sigma), or
+///    [`publish_raw`](BusBridge::publish_raw)
+/// 4. **Poll** for incoming messages via [`poll`](BusBridge::poll)
+/// 5. **Deregister** on shutdown via [`deregister`](BusBridge::deregister)
+///
+/// # Error Handling
+///
+/// - [`publish_sigma`](BusBridge::publish_sigma) and
+///   [`publish_event`](BusBridge::publish_event) return [`BusError`] if no
+///   agent matches the routing capability — publish to a registered target first
+/// - [`poll`](BusBridge::poll) returns [`BusError`] if the agent was deregistered
+///   or never registered — always register before polling
+/// - Correlation IDs are sequential and thread-local to this bridge instance;
+///   they start at 1
+///
+/// # Direct Transport (publish_raw with recipient)
+///
+/// When `publish_raw` is called with `Some(recipient)`, the message bypasses
+/// capability routing and goes directly to the transport layer. This is useful
+/// for point-to-point messages (heartbeats, acks, RPC responses). When
+/// `recipient` is `None`, the payload is wrapped as a Σ∞ packet and routed
+/// by capability — suitable for pub/sub and event broadcasting.
+///
 /// # Example
 ///
 /// ```no_run

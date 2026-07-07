@@ -88,7 +88,7 @@ impl Orchestrator {
     /// no matching remote agent is found.
     pub fn dispatch_via_bus(
         &self,
-        bus: &Bus,
+        bus: &mut Bus,
         program: SigmaProgram,
         required_cap: Capability,
     ) -> Result<SigmaProgram, AgentError> {
@@ -97,22 +97,34 @@ impl Orchestrator {
         let online: Vec<_> = candidates.iter().filter(|a| a.online).collect();
 
         if online.is_empty() {
-            // Fall back to local execution.
+            tracing::info!(
+                capability = ?required_cap,
+                "no online agent with required capability, falling back to local"
+            );
             return self.dispatch(program);
         }
 
         // Pick the first online match (future: load balancing).
-        let target = &online[0].id;
         tracing::info!(
-            target = %target.as_str(),
+            target = %online[0].id.as_str(),
             capability = ?required_cap,
             "dispatching program via bus"
         );
 
-        // For now, since we don't have async bus send for programs,
-        // we fall back to local execution but record the intent.
-        // TODO: wire bus.send_program(target, program) when async bus is ready.
-        self.dispatch(program)
+        // Send each packet in the program to the target agent via the bus.
+        for (i, packet) in program.instructions.iter().enumerate() {
+            bus.send_sigma(
+                &self.id,
+                packet,
+                &required_cap,
+                i as u64, // correlation_id: use packet index
+            )
+            .map_err(|e| AgentError::TransportError(e.to_string()))?;
+        }
+
+        // Return empty result — the response will arrive via bus.receive()
+        // on a subsequent poll.
+        Ok(SigmaProgram::new())
     }
 
     /// Store a result from a dispatched program.

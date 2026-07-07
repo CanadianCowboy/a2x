@@ -411,7 +411,7 @@ fn test_orchestrator_dispatch_via_bus() {
 
     // dispatch_via_bus should find the CLI agent by capability
     let result = orch
-        .dispatch_via_bus(&bus, program, Capability::Execute)
+        .dispatch_via_bus(&mut bus, program, Capability::Execute)
         .expect("dispatch via bus");
     assert!(
         result.is_empty(),
@@ -615,7 +615,7 @@ fn test_full_pipeline_bus_orchestration() {
     program.compute_id();
 
     let result = orch
-        .dispatch_via_bus(&bus, program, Capability::Execute)
+        .dispatch_via_bus(&mut bus, program, Capability::Execute)
         .expect("dispatch via bus");
     assert!(result.is_empty());
 }
