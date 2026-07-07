@@ -365,7 +365,10 @@ impl HttpListener {
     /// This is the canonical router definition. External integrators
     /// can use this to embed the A2X HTTP API into their own axum server.
     pub fn router(state: Arc<HttpGatewayState>) -> Router {
+        use crate::dashboard;
         Router::new()
+            .route("/", get(dashboard::handle_dashboard))
+            .route("/a2x/dashboard/ws", get(dashboard::handle_dashboard_ws))
             .route("/a2x/execute", post(handle_execute))
             .route("/a2x/entities", get(handle_list_entities))
             .route("/a2x/entities/{entity_id}", get(handle_get_entity))

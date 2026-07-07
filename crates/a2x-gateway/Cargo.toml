@@ -13,7 +13,7 @@ a2x-core = { path = "../a2x-core" }
 a2x-sigma = { path = "../a2x-sigma" }
 a2x-bus = { path = "../a2x-bus" }
 a2x-agents = { path = "../a2x-agents" }
-axum = { workspace = true }
+axum = { workspace = true, features = ["ws"] }
 tower-http = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }

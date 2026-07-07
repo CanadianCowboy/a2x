@@ -40,6 +40,28 @@ pub struct GatewayState {
     pub next_correlation_id: u64,
     /// Rate limiter: token-bucket per entity.
     pub rate_limiter: RateLimiter,
+    /// Dashboard: ring buffer of recent bus events (max 200).
+    pub bus_log: Vec<DashboardEvent>,
+    /// Dashboard: ring buffer of recent program executions (max 50).
+    pub program_history: Vec<ProgramHistoryEntry>,
+}
+
+/// A single event entry for the dashboard bus log.
+#[derive(Clone, Debug)]
+pub struct DashboardEvent {
+    pub timestamp: u64,
+    pub event_type: String,
+    pub message: String,
+}
+
+/// A single program execution entry for the dashboard history.
+#[derive(Clone, Debug)]
+pub struct ProgramHistoryEntry {
+    pub timestamp: u64,
+    pub source: String,
+    pub result: String,
+    pub status: String,
+    pub duration_ms: u64,
 }
 
 impl GatewayState {
@@ -53,6 +75,8 @@ impl GatewayState {
             listeners: Vec::new(),
             next_correlation_id: 1,
             rate_limiter: RateLimiter::new(60),
+            bus_log: Vec::new(),
+            program_history: Vec::new(),
         }
     }
 
@@ -252,6 +276,50 @@ impl GatewayState {
         let id = self.next_correlation_id;
         self.next_correlation_id = self.next_correlation_id.wrapping_add(1);
         id
+    }
+
+    /// Record a bus event for the dashboard log.
+    pub fn record_bus_event(&mut self, event_type: &str, message: &str) {
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        self.bus_log.push(DashboardEvent {
+            timestamp: ts,
+            event_type: event_type.to_string(),
+            message: message.to_string(),
+        });
+        if self.bus_log.len() > 200 {
+            self.bus_log.remove(0);
+        }
+    }
+
+    /// Record a program execution for the dashboard history.
+    pub fn record_execution(&mut self, source: &str, result: &str, status: &str, duration_ms: u64) {
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        self.program_history.push(ProgramHistoryEntry {
+            timestamp: ts,
+            source: source.to_string(),
+            result: result.to_string(),
+            status: status.to_string(),
+            duration_ms,
+        });
+        if self.program_history.len() > 50 {
+            self.program_history.remove(0);
+        }
+    }
+
+    /// Clone the bus log (non-draining — safe for multiple dashboard clients).
+    pub fn clone_bus_log(&self) -> Vec<DashboardEvent> {
+        self.bus_log.clone()
+    }
+
+    /// Clone the program history (non-draining — safe for multiple dashboard clients).
+    pub fn clone_program_history(&self) -> Vec<ProgramHistoryEntry> {
+        self.program_history.clone()
     }
 }
 
