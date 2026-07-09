@@ -9,7 +9,7 @@
 //   probe   — Inspect an agent's internal state
 
 use std::fs;
-use std::io::{self, Read};
+use std::io::{self, Read, Write};
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
@@ -19,6 +19,7 @@ use a2x_bus::{AgentFilter, AgentInfo, Bus};
 use a2x_core::agent::Agent;
 use a2x_core::agent_id::{AgentId, AgentType};
 use a2x_core::capability::Capability;
+use a2x_gateway::ProtocolListener;
 use a2x_sigma::{parse_program, serialize_packet};
 
 /// A2X — Agent-to-Anything: an AI-native programming language & runtime.
@@ -104,6 +105,36 @@ enum Command {
         #[arg(short, long, default_value = "orchestrator")]
         agent_type: String,
     },
+
+    /// Interactive Σ∞ REPL shell.
+    ///
+    /// Start an interactive read-eval-print loop for Σ∞ programs.
+    /// Type programs directly and see results immediately.
+    /// Special commands: :help, :quit, :agents, :parse <expr>
+    Shell,
+
+    /// Monitor the A2X bus in real-time.
+    ///
+    /// Displays live bus traffic — agents joining, programs executing, results flowing.
+    Monitor {
+        /// Gateway address to connect to (default: 127.0.0.1:8778).
+        #[arg(short, long, default_value = "127.0.0.1:8778")]
+        addr: String,
+    },
+
+    /// Launch the A2X web dashboard.
+    ///
+    /// Starts the A2X gateway daemon and serves the web dashboard.
+    /// Set A2X_CHAT_BACKEND=ollama to enable the ChatAgent.
+    Dashboard {
+        /// Port to listen on (default: 8778).
+        #[arg(short, long, default_value = "8778")]
+        port: u16,
+
+        /// Don't open the browser automatically.
+        #[arg(long)]
+        no_browser: bool,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -142,6 +173,9 @@ fn main() -> Result<()> {
             agent_id,
             agent_type,
         } => cmd_probe(&agent_id, &agent_type),
+        Command::Shell => cmd_shell(),
+        Command::Monitor { addr } => cmd_monitor(&addr),
+        Command::Dashboard { port, no_browser } => cmd_dashboard(port, no_browser),
     }
 }
 
@@ -424,6 +458,321 @@ fn parse_agent_type(s: &str) -> Result<AgentType> {
             other
         ),
     }
+}
+
+// ---------------------------------------------------------------------------
+// Subcommand: shell
+// ---------------------------------------------------------------------------
+
+fn cmd_shell() -> Result<()> {
+    let cyan = "\x1b[36m";
+    let green = "\x1b[32m";
+    let yellow = "\x1b[33m";
+    let red = "\x1b[31m";
+    let reset = "\x1b[0m";
+
+    println!(
+        "{}═══════════════════════════════════════════{}",
+        cyan, reset
+    );
+    println!("{}  A2X Shell — Interactive Σ∞ REPL{}", cyan, reset);
+    println!("{}  Type Σ∞ programs or :help for commands{}", cyan, reset);
+    println!(
+        "{}═══════════════════════════════════════════{}\n",
+        cyan, reset
+    );
+
+    let stdin = io::stdin();
+    let mut input = String::new();
+
+    loop {
+        print!("{green}Σ∞>{reset} ");
+        let _ = io::stdout().flush();
+        input.clear();
+        match stdin.read_line(&mut input) {
+            Ok(0) => break,
+            Ok(_) => {
+                let line = input.trim();
+                if line.is_empty() {
+                    continue;
+                }
+                if line.starts_with(':') {
+                    match line {
+                        ":quit" | ":q" => break,
+                        ":help" | ":h" => {
+                            println!("  :quit, :q       Exit the REPL");
+                            println!("  :help, :h       Show this help");
+                            println!("  :agents         List built-in agents");
+                            println!("  :parse <expr>   Parse and display a Σ∞ expression");
+                            println!("  :monitor        Show bus state");
+                            println!("  <Σ∞ program>    Parse and execute a program");
+                        }
+                        ":agents" => {
+                            let mut bus = Bus::new();
+                            register_builtin_agents(&mut bus);
+                            let agents = bus.discover(&AgentFilter::All);
+                            for info in &agents {
+                                let caps: Vec<String> =
+                                    info.capabilities.iter().map(|c| c.to_string()).collect();
+                                println!(
+                                    "  {}○ {}{} {} {:?}{} {}",
+                                    green,
+                                    info.id.as_str(),
+                                    reset,
+                                    yellow,
+                                    info.agent_type,
+                                    reset,
+                                    caps.join(", ")
+                                );
+                            }
+                            println!("  {}— {} agent(s){}", cyan, agents.len(), reset);
+                        }
+                        ":monitor" => {
+                            let mut bus = Bus::new();
+                            register_builtin_agents(&mut bus);
+                            println!(
+                                "  {}Bus state:{} {} agent(s) registered",
+                                cyan,
+                                reset,
+                                bus.agent_count()
+                            );
+                            let all = bus.discover(&AgentFilter::All);
+                            for info in &all {
+                                println!(
+                                    "    {} → {:?} [{}]",
+                                    info.id.as_str(),
+                                    info.agent_type,
+                                    if info.online { "online" } else { "offline" }
+                                );
+                            }
+                        }
+                        _ if line.starts_with(":parse ") => {
+                            let expr = &line[7..];
+                            match parse_program(expr) {
+                                Ok(mut prog) => {
+                                    prog.compute_id();
+                                    println!(
+                                        "  {}✓ Parsed{} — {} instruction(s), ID: {}",
+                                        green,
+                                        reset,
+                                        prog.len(),
+                                        prog.id
+                                    );
+                                    for (i, pkt) in prog.instructions.iter().enumerate() {
+                                        println!("    [{}] {}", i, serialize_packet(pkt));
+                                    }
+                                }
+                                Err(e) => println!("  {}✗ Parse error:{} {}", red, reset, e),
+                            }
+                        }
+                        _ => println!("  {}Unknown command:{} {}", yellow, reset, line),
+                    }
+                } else {
+                    match parse_program(line) {
+                        Ok(mut prog) => {
+                            prog.compute_id();
+                            let orchestrator = Orchestrator::new(AgentId::new("shell-orch"));
+                            match orchestrator.dispatch(prog) {
+                                Ok(result) => {
+                                    let out = if result.is_empty() {
+                                        "∅ (empty)".to_string()
+                                    } else {
+                                        result
+                                            .instructions
+                                            .iter()
+                                            .map(serialize_packet)
+                                            .collect::<Vec<_>>()
+                                            .join("\n    ")
+                                    };
+                                    println!("  {}✓ {}", green, out);
+                                }
+                                Err(e) => println!("  {}✗ Dispatch:{} {}", red, reset, e),
+                            }
+                        }
+                        Err(e) => println!("  {}✗ Parse:{} {}", red, reset, e),
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("  {}Read error:{} {}", red, reset, e);
+                break;
+            }
+        }
+    }
+    println!("\n{}Goodbye.{}", cyan, reset);
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Subcommand: monitor
+// ---------------------------------------------------------------------------
+
+fn cmd_monitor(_addr: &str) -> Result<()> {
+    let cyan = "\x1b[36m";
+    let reset = "\x1b[0m";
+
+    println!("{}══ A2X Bus Monitor ══{}", cyan, reset);
+    println!();
+
+    let mut bus = Bus::new();
+    register_builtin_agents(&mut bus);
+
+    let all = bus.discover(&AgentFilter::All);
+    println!("Connected agents: {}", all.len());
+    println!("{:>6}  {:20} {:8}  Capabilities", "ID", "Type", "Status");
+    println!("{}", "─".repeat(70));
+    for info in &all {
+        let caps: Vec<String> = info.capabilities.iter().map(|c| c.to_string()).collect();
+        println!(
+            "{:>6}  {:20} {:8}  {}",
+            info.id.as_str(),
+            format!("{:?}", info.agent_type),
+            if info.online {
+                "● online"
+            } else {
+                "○ offline"
+            },
+            caps.join(", "),
+        );
+    }
+
+    // Execute a demo program to show bus activity
+    println!("\nExecuting demo program...");
+    let orch = Orchestrator::new(AgentId::new("monitor-orch"));
+    let mut prog = a2x_sigma::program::SigmaProgram::new();
+    prog.push(a2x_sigma::SigmaPacket::default());
+    prog.compute_id();
+
+    let prog_id = prog.id;
+    match orch.dispatch(prog) {
+        Ok(result) => {
+            println!(
+                "  Dispatch: {} → {} result instruction(s)",
+                prog_id,
+                result.len()
+            );
+        }
+        Err(e) => {
+            println!("  Dispatch error: {}", e);
+        }
+    }
+
+    println!("\nTip: Connect to a running gateway for live traffic:");
+    println!("  a2x dashboard    # start the gateway + web UI");
+    println!("  Then visit http://127.0.0.1:8778 in your browser");
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Subcommand: dashboard
+// ---------------------------------------------------------------------------
+
+fn cmd_dashboard(port: u16, no_browser: bool) -> Result<()> {
+    let cyan = "\x1b[36m";
+    let green = "\x1b[32m";
+    let yellow = "\x1b[33m";
+    let reset = "\x1b[0m";
+
+    println!("{}══ A2X Dashboard ══{}", cyan, reset);
+    println!();
+
+    let addr = format!("0.0.0.0:{}", port);
+
+    // Create gateway with default config
+    // Create gateway with config from env vars (same as a2x-gatewayd)
+    let mut cfg = a2x_gateway::GatewayConfig::default();
+    if let Ok(sk) = std::env::var("A2X_API_KEY") {
+        cfg.auth.mode = "api_key".into();
+        cfg.auth.api_keys.push(a2x_gateway::config::ApiKeyEntry {
+            key: sk,
+            entity_id: "app-1".into(),
+        });
+    }
+    if let Ok(backend) = std::env::var("A2X_CHAT_BACKEND") {
+        cfg.chat_backend.backend_type = backend;
+    }
+    if let Ok(model) = std::env::var("A2X_CHAT_MODEL") {
+        cfg.chat_backend.model = model;
+    }
+    if let Ok(url) = std::env::var("A2X_CHAT_API_URL") {
+        cfg.chat_backend.api_url = url;
+    }
+    if let Ok(key) = std::env::var("A2X_CHAT_API_KEY") {
+        cfg.chat_backend.api_key = key;
+    }
+    if let Ok(ct) = std::env::var("A2X_CHAT_CONTEXT_TOKENS") {
+        if let Ok(n) = ct.parse::<u32>() {
+            cfg.chat_backend.max_context_tokens = n;
+        }
+    }
+
+    let gw = a2x_gateway::Gateway::from_config(cfg)
+        .map_err(|e| anyhow::anyhow!("Failed to create gateway: {}", e))?;
+
+    // Register built-in agents
+    if let Err(e) = gw.register_builtin_agents() {
+        println!(
+            "  {}Warning:{} failed to register agents: {}",
+            yellow, reset, e
+        );
+    }
+
+    let gw_state = std::sync::Arc::new(a2x_gateway::listeners::http::HttpGatewayState {
+        gateway: gw.state_arc(),
+    });
+
+    // Start HTTP listener
+    let mut http = a2x_gateway::listeners::http::HttpListener::new(addr.clone(), gw_state);
+    if let Err(e) = http.start() {
+        anyhow::bail!("Failed to start HTTP listener on {}: {}", addr, e);
+    }
+
+    let local_addr = addr.replace("0.0.0.0", "127.0.0.1");
+    println!(
+        "  {}✓{} Dashboard running at {green}http://{}{}",
+        green, reset, local_addr, reset
+    );
+    println!(
+        "  Chat backend: {yellow}{}{} (set A2X_CHAT_BACKEND=ollama to enable)",
+        std::env::var("A2X_CHAT_BACKEND").unwrap_or_else(|_| "none".into()),
+        reset
+    );
+    println!("  Press Ctrl+C to stop.\n");
+
+    // Open browser
+    if !no_browser {
+        let url = format!("http://{}", local_addr);
+        #[cfg(target_os = "windows")]
+        {
+            let _ = std::process::Command::new("cmd")
+                .args(["/C", "start", &url])
+                .spawn();
+        }
+        #[cfg(target_os = "macos")]
+        {
+            let _ = std::process::Command::new("open").arg(&url).spawn();
+        }
+        #[cfg(target_os = "linux")]
+        {
+            let _ = std::process::Command::new("xdg-open").arg(&url).spawn();
+        }
+    }
+
+    // Block until Ctrl+C
+    let (tx, rx) = std::sync::mpsc::channel::<()>();
+    if let Err(e) = ctrlc::set_handler(move || {
+        let _ = tx.send(());
+    }) {
+        println!("  {}Warning:{} Ctrl+C handler: {}", yellow, reset, e);
+    }
+    let _ = rx.recv();
+
+    println!("\nShutting down...");
+    if let Err(e) = http.stop() {
+        println!("  {}Warning:{} error stopping: {}", yellow, reset, e);
+    }
+    println!("{}Dashboard stopped.{}", cyan, reset);
+    Ok(())
 }
 
 /// Register built-in agents on the bus for the `agents` subcommand.

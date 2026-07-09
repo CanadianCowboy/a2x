@@ -150,6 +150,9 @@ async fn handle_execute(
         )
     })?;
 
+    // Check auth status before entity_id is moved below.
+    let was_authenticated = entity_id.is_some();
+
     // Execute via the gateway (with permission enforcement if authenticated)
     let result = {
         let mut gw = state.gateway.lock().map_err(|e| {
@@ -186,6 +189,18 @@ async fn handle_execute(
             .collect::<Vec<_>>()
             .join("\n")
     };
+
+    // Record execution in dashboard history for live monitoring.
+    if let Ok(mut gw) = state.gateway.lock() {
+        let source_preview: String = req.program.chars().take(80).collect();
+        let result_preview: String = result_str.chars().take(80).collect();
+        gw.record_execution(&source_preview, &result_preview, "completed", elapsed);
+        let auth_label = if was_authenticated { "(auth)" } else { "" };
+        gw.record_bus_event(
+            "exec",
+            &format!("HTTP {} — completed in {}ms", auth_label, elapsed),
+        );
+    }
 
     Ok(Json(ExecuteResponse {
         result: result_str,
@@ -316,6 +331,8 @@ pub struct HttpListener {
     /// In production, TLS termination via reverse proxy (nginx/caddy) is
     /// the recommended approach; this field exists for direct TLS support.
     tls_config: Option<GatewayTlsConfig>,
+    /// Actual bound address (resolved after bind, e.g. port 0 → 127.0.0.1:54321).
+    resolved_address: Option<String>,
     running: bool,
     /// Handle to the server thread (joined on drop, but we signal shutdown first).
     server_thread: Option<std::thread::JoinHandle<()>>,
@@ -329,6 +346,7 @@ impl HttpListener {
             bind_address: bind_address.into(),
             gateway_state,
             tls_config: None,
+            resolved_address: None,
             running: false,
             server_thread: None,
             shutdown_tx: None,
@@ -349,6 +367,7 @@ impl HttpListener {
             bind_address: bind_address.into(),
             gateway_state,
             tls_config: Some(tls_config),
+            resolved_address: None,
             running: false,
             server_thread: None,
             shutdown_tx: None,
@@ -459,7 +478,8 @@ impl ProtocolListener for HttpListener {
 
         // Block until the server thread reports bind success or failure.
         match ready_rx.recv() {
-            Ok(Ok(_addr)) => {
+            Ok(Ok(addr)) => {
+                self.resolved_address = addr.map(|a| a.to_string());
                 self.server_thread = Some(handle);
                 self.shutdown_tx = Some(shutdown_tx);
                 self.running = true;
@@ -511,11 +531,7 @@ impl ProtocolListener for HttpListener {
     }
 
     fn bound_address(&self) -> Option<String> {
-        if self.running {
-            Some(self.bind_address.clone())
-        } else {
-            None
-        }
+        self.resolved_address.clone()
     }
 }
 

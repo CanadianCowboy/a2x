@@ -13,6 +13,7 @@ a2x-core = { path = "../a2x-core" }
 a2x-sigma = { path = "../a2x-sigma" }
 a2x-bus = { path = "../a2x-bus" }
 a2x-agents = { path = "../a2x-agents" }
+a2x-ccs = { path = "../a2x-ccs" }
 axum = { workspace = true, features = ["ws"] }
 tower-http = { workspace = true }
 tokio = { workspace = true }
@@ -24,6 +25,7 @@ anyhow = { workspace = true }
 uuid = { workspace = true }
 ctrlc = "3"
 rustls = { workspace = true, optional = true }
+reqwest = { workspace = true, features = ["json"] }
 
 [features]
 default = []
@@ -31,7 +33,6 @@ tls = ["dep:rustls"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
-reqwest = { workspace = true }
 
 [lib]
 name = "a2x_gateway"

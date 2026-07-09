@@ -35,15 +35,11 @@ fn main() {
     match gw.register_builtin_agents() {
         Ok(()) => {
             let state = gw.state.lock().unwrap();
-            println!(
-                "  ✓ {} agents registered on the bus",
-                state.bus.agent_count()
-            );
+            let bus = state.bus.lock().unwrap();
+            println!("  ✓ {} agents registered on the bus", bus.agent_count());
 
             // Discover agents by capability
-            let exec_agents = state
-                .bus
-                .discover(&AgentFilter::ByCapability(Capability::Execute));
+            let exec_agents = bus.discover(&AgentFilter::ByCapability(Capability::Execute));
             println!("  Execute-capable agents:");
             for info in &exec_agents {
                 println!(

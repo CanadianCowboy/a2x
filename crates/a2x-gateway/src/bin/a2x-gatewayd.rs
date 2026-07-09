@@ -17,7 +17,7 @@ fn main() {
         format!("0.0.0.0:{}", port)
     };
 
-    // Build config from env (API key optional)
+    // Build config from env
     let mut cfg = GatewayConfig::default();
     if let Ok(sk) = env::var("A2X_API_KEY") {
         cfg.auth.mode = "api_key".into();
@@ -27,11 +27,80 @@ fn main() {
         });
     }
 
+    // Chat backend config from env
+    if let Ok(backend) = env::var("A2X_CHAT_BACKEND") {
+        cfg.chat_backend.backend_type = backend;
+    }
+    if let Ok(model) = env::var("A2X_CHAT_MODEL") {
+        cfg.chat_backend.model = model;
+    }
+    if let Ok(url) = env::var("A2X_CHAT_API_URL") {
+        cfg.chat_backend.api_url = url;
+    }
+    if let Ok(key) = env::var("A2X_CHAT_API_KEY") {
+        cfg.chat_backend.api_key = key;
+    }
+    if let Ok(ct) = env::var("A2X_CHAT_CONTEXT_TOKENS") {
+        if let Ok(n) = ct.parse::<u32>() {
+            cfg.chat_backend.max_context_tokens = n;
+        }
+    }
+
     // Initialize gateway from config and wrap state for HTTP
     let gw = Gateway::from_config(cfg).unwrap_or_else(|e| {
         eprintln!("a2x-gatewayd: failed to init gateway from config: {}", e);
         std::process::exit(1);
     });
+
+    // Register built-in agents so the dashboard shows a live ecosystem.
+    if let Err(e) = gw.register_builtin_agents() {
+        eprintln!(
+            "a2x-gatewayd: warning — failed to register built-in agents: {}",
+            e
+        );
+    }
+
+    // Bootstrap the WorldGraph with system concepts so the dashboard graph
+    // has meaningful data on startup.
+    {
+        let state = gw.state_arc();
+        let gw_state = state.lock().unwrap_or_else(|e| {
+            eprintln!("a2x-gatewayd: failed to lock state for bootstrap: {}", e);
+            std::process::exit(1);
+        });
+        if let Err(e) = gw_state.bootstrap_world_graph() {
+            eprintln!("a2x-gatewayd: warning — WorldGraph bootstrap failed: {}", e);
+        } else {
+            println!("WorldGraph bootstrapped with system concepts");
+        }
+    }
+
+    // Eagerly init the chat agent to validate backend connectivity.
+    let gw_arc = gw.state_arc();
+    {
+        let mut state = gw_arc.lock().unwrap_or_else(|e| {
+            eprintln!("a2x-gatewayd: failed to lock gateway state: {}", e);
+            std::process::exit(1);
+        });
+        let _chat = state.get_chat_agent();
+        match state.config.chat_backend.backend_type.as_str() {
+            "ollama" => {
+                println!(
+                    "Chat agent: ollama / {} @ {}",
+                    state.config.chat_backend.model, state.config.chat_backend.api_url
+                );
+            }
+            "openai" => {
+                println!("Chat agent: openai / {}", state.config.chat_backend.model);
+            }
+            _ => {
+                println!(
+                    "Chat agent: no backend configured (set A2X_CHAT_BACKEND=ollama to enable)"
+                );
+            }
+        }
+    }
+
     let gw_state = Arc::new(HttpGatewayState {
         gateway: gw.state_arc(),
     });

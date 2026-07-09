@@ -33,6 +33,10 @@ pub struct GatewayConfig {
     /// Webhook configuration.
     #[serde(default)]
     pub webhook: WebhookConfig,
+
+    /// Chat agent LLM backend configuration.
+    #[serde(default)]
+    pub chat_backend: ChatBackendConfig,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -145,6 +149,73 @@ impl Default for WebhookConfig {
     }
 }
 
+/// LLM backend configuration for the chat agent.
+#[derive(Clone, Debug, Deserialize)]
+pub struct ChatBackendConfig {
+    /// Backend type: "ollama", "openai", or "none".
+    #[serde(default = "default_backend_type")]
+    pub backend_type: String,
+
+    /// Model name (e.g. "codellama:7b", "llama3", "gpt-4o").
+    #[serde(default = "default_chat_model")]
+    pub model: String,
+
+    /// API base URL (Ollama default: http://localhost:11434/v1).
+    #[serde(default = "default_ollama_url")]
+    pub api_url: String,
+
+    /// API key (empty for Ollama, required for OpenAI).
+    #[serde(default)]
+    pub api_key: String,
+
+    /// Maximum response tokens.
+    #[serde(default = "default_max_tokens")]
+    pub max_tokens: u32,
+
+    /// Temperature (0.0 = deterministic, 1.0 = creative).
+    #[serde(default = "default_temperature")]
+    pub temperature: f32,
+
+    /// Maximum context window tokens (for pruning old messages).
+    /// Default 32768 — matches qwen2.5 / mistral 32K context windows.
+    /// Set lower for smaller models like deepseek-coder-v2 (2048).
+    #[serde(default = "default_context_tokens")]
+    pub max_context_tokens: u32,
+}
+
+impl Default for ChatBackendConfig {
+    fn default() -> Self {
+        ChatBackendConfig {
+            backend_type: default_backend_type(),
+            model: default_chat_model(),
+            api_url: default_ollama_url(),
+            api_key: String::new(),
+            max_tokens: default_max_tokens(),
+            temperature: default_temperature(),
+            max_context_tokens: default_context_tokens(),
+        }
+    }
+}
+
+fn default_backend_type() -> String {
+    "none".into()
+}
+fn default_chat_model() -> String {
+    "codellama:7b".into()
+}
+fn default_ollama_url() -> String {
+    "http://localhost:11434/v1".into()
+}
+fn default_max_tokens() -> u32 {
+    4096
+}
+fn default_temperature() -> f32 {
+    0.2
+}
+fn default_context_tokens() -> u32 {
+    32768
+}
+
 // Serde defaults
 fn default_bind_address() -> String {
     "0.0.0.0:8777".into()
@@ -181,6 +252,7 @@ impl Default for GatewayConfig {
             stdio: StdioConfig::default(),
             auth: AuthConfig::default(),
             webhook: WebhookConfig::default(),
+            chat_backend: ChatBackendConfig::default(),
         }
     }
 }

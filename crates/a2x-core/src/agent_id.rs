@@ -42,8 +42,8 @@ impl From<String> for AgentId {
 /// - Llm: generates Σ∞ programs from natural language intent
 /// - Cli: executes system commands through sandboxed shell
 /// - Ccs: maintains a persistent WorldGraph for cognitive programs
-/// - Omega: pure latent execution, no symbolic layer
-/// - Entity: external system connected through the gateway
+/// - Omega: pure latent execution, no symbolic layer///   - Chat: conversational coding agent that orchestrates all A2X subsystems
+///   - Entity: external system connected through the gateway
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum AgentType {
@@ -52,6 +52,7 @@ pub enum AgentType {
     Cli,
     Ccs,
     Omega,
+    Chat,
     Entity,
     /// 4-byte namespace for custom/third-party agent types.
     Custom([u8; 4]),

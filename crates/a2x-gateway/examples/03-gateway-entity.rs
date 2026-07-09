@@ -228,15 +228,24 @@ fn main() {
     gateway.register_builtin_agents().unwrap();
     {
         let state = state_arc.lock().unwrap();
-        println!("  ✓ {} agents on bus", state.bus.agent_count());
+        println!(
+            "  ✓ {} agents on bus",
+            state.bus.lock().unwrap().agent_count()
+        );
 
         // Discover agents via bus
         let orch = state
             .bus
+            .lock()
+            .unwrap()
             .discover(&AgentFilter::ByType(AgentType::Orchestrator));
         println!("  Orchestrator agents: {}", orch.len());
 
-        let cli = state.bus.discover(&AgentFilter::ByType(AgentType::Cli));
+        let cli = state
+            .bus
+            .lock()
+            .unwrap()
+            .discover(&AgentFilter::ByType(AgentType::Cli));
         println!("  CLI agents: {}", cli.len());
     }
 

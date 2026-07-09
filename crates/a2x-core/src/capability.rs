@@ -17,6 +17,12 @@ pub enum Capability {
     Shell,
     /// Probe/inspect agent state.
     Probe,
+    /// Chat/conversational interaction.
+    Chat,
+    /// Generate Σ∞ programs from natural language.
+    Generate,
+    /// Reflect/self-model cognitive state.
+    Reflect,
     /// Custom capability (free-form string).
     Custom(String),
 }
@@ -29,6 +35,9 @@ impl std::fmt::Display for Capability {
             Capability::Network => write!(f, "net"),
             Capability::Shell => write!(f, "shell"),
             Capability::Probe => write!(f, "probe"),
+            Capability::Chat => write!(f, "chat"),
+            Capability::Generate => write!(f, "generate"),
+            Capability::Reflect => write!(f, "reflect"),
             Capability::Custom(s) => write!(f, "custom:{}", s),
         }
     }

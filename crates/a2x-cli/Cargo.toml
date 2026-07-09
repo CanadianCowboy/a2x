@@ -21,7 +21,11 @@ clap = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+a2x-gateway = { path = "../a2x-gateway" }
+ctrlc = "3"
 
 [dev-dependencies]
 a2x-ccs = { path = "../a2x-ccs" }
-a2x-gateway = { path = "../a2x-gateway" }
+tokio = { workspace = true }
+reqwest = { workspace = true }
+serde_json = { workspace = true }
