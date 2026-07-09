@@ -160,7 +160,7 @@ async fn handle_vm_command(
         .gateway
         .lock()
         .ok()
-        .and_then(|gw| Some(gw.chat_ccs_vm.clone()))
+        .map(|gw| gw.chat_ccs_vm.clone())
     {
         Some(v) => v,
         None => {
@@ -246,13 +246,7 @@ async fn handle_chat_message(
     user_message: &str,
 ) {
     let gw_arc = state.gateway.clone();
-    let chat_agent = {
-        let result = gw_arc.lock();
-        match result.ok() {
-            Some(mut gw) => Some(gw.get_chat_agent()),
-            None => None,
-        }
-    };
+    let chat_agent = gw_arc.lock().ok().map(|mut gw| gw.get_chat_agent());
     let chat_agent = match chat_agent {
         Some(a) => a,
         None => {

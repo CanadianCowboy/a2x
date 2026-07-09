@@ -195,7 +195,7 @@ pub fn extract_topics(text: &str, memory: &mut ContextMemory) {
     let mut found: Vec<String> = Vec::new();
 
     // Quoted strings often indicate topics (split on both double and single quotes)
-    for segment in text.split(|c: char| c == '"' || c == '\'') {
+    for segment in text.split(['"', '\'']) {
         let w = segment.trim();
         if w.len() >= 4 && w.len() <= 60 && !w.starts_with("http") {
             found.push(w.to_string());
@@ -215,7 +215,7 @@ pub fn extract_topics(text: &str, memory: &mut ContextMemory) {
     for word in text.split_whitespace() {
         let w = word.trim_matches(|c: char| !c.is_alphanumeric());
         if w.len() >= 4
-            && w.chars().next().map_or(false, |c| c.is_uppercase())
+            && w.chars().next().is_some_and(|c| c.is_uppercase())
             && !w.bytes().all(|b| b.is_ascii_uppercase())
         // skip ALL CAPS
         {
@@ -284,8 +284,10 @@ mod tests {
 
     #[test]
     fn test_context_memory_with_working_dir() {
-        let mut mem = ContextMemory::default();
-        mem.working_dir = Some("/home/user/project".into());
+        let mem = ContextMemory {
+            working_dir: Some("/home/user/project".into()),
+            ..Default::default()
+        };
         let msg = mem.to_system_message().unwrap();
         assert!(msg.content.contains("/home/user/project"));
     }

@@ -579,6 +579,9 @@ fn run_ccs_program_impl(args: &Value, tool_call_id: &str, ctx: &mut ToolContext)
     // the VM runs (up to 30s with periodic yields).
     match tokio::runtime::Handle::try_current() {
         Ok(handle) => {
+            // SAFETY: block_in_place runs on a dedicated thread, so holding the
+            // MutexGuard across .await is safe here (no worker starvation).
+            #[allow(clippy::await_holding_lock)]
             let result = tokio::task::block_in_place(move || {
                 handle.block_on(async move {
                     let mut vm = vm_arc
@@ -658,7 +661,7 @@ fn compile_omega_impl(args: &Value, tool_call_id: &str) -> ToolResult {
                         content: serde_json::json!({
                             "success": true, "omega_packets": omega_program.len(),
                             "original_instructions": program.len(),
-                            "compression_ratio": if program.len() > 0 {
+                            "compression_ratio": if !program.is_empty() {
                                 format!("{:.1}%", (omega_program.len() as f64 / program.len() as f64) * 100.0)
                             } else { "N/A".to_string() }
                         }).to_string(),

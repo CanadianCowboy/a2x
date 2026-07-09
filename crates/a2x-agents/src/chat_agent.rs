@@ -174,6 +174,7 @@ impl ChatAgent {
     }
 
     /// Get the estimated token usage of the current history.
+    #[allow(clippy::redundant_closure)]
     pub fn context_tokens_used(&self) -> u32 {
         let hist = self
             .history
@@ -193,6 +194,7 @@ impl ChatAgent {
     /// * Messages that don't fit are mined for patterns into ContextMemory.
     /// * A dynamic memory summary is injected as context after system messages.
     /// * Recent messages are kept within the remaining budget.
+    #[allow(clippy::redundant_closure)]
     pub fn prune_history(&self, messages: &[ChatMessage]) -> Vec<ChatMessage> {
         let max_tokens = self.max_context_tokens();
         let budget = ((max_tokens as f64) * (1.0 - CONTEXT_SAFETY_MARGIN)) as u32;
