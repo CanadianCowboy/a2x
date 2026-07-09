@@ -26,6 +26,9 @@ desktop.ini
 # A2X runtime data
 ~/.a2x/
 
+# Work reports (internal dev notes, keep local)
+work-reports/
+
 # Temp / backup
 *.tmp
 *.bak

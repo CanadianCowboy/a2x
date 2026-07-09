@@ -185,7 +185,7 @@ A2X is a **three-layer programming language stack** for AI agents:
 - **[PLAN.md](PLAN.md)** — the full project plan and detailed design (30 sections)
 - **[ROADMAP.md](ROADMAP.md)** — expansion ideas and priority order
 - **[docs/](docs/)** — protocol specifications and architecture docs
-- **[work-reports/](work-reports/)** — chronological work reports from every session
+- **[CHANGELOG.md](CHANGELOG.md)** — full version history and release notes
 
 ---
 
