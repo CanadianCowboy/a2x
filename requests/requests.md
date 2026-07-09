@@ -1,8 +1,8 @@
 # A2X Integration Requests — Soong Path AGI
 
-> These are requested changes/additions to the A2X (ailang) crates to better support
-> integration with the Soong Path AGI system (`soong-path/`). All crates are used as
-> **path dependencies** from `D:/projects/ailang/crates/`.
+> These are requested changes/additions to the A2X crates to better support
+> integration with the Soong Path AGI system. All crates are used as
+> **path dependencies** from the local A2X workspace.
 
 ## Status
 

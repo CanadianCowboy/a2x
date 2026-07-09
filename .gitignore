@@ -17,6 +17,12 @@ Cargo.lock
 Thumbs.db
 desktop.ini
 
+# Environment / secrets
+.env
+.env.local
+*.pem
+*.key
+
 # A2X runtime data
 ~/.a2x/
 

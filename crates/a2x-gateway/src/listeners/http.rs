@@ -577,11 +577,11 @@ mod tests {
         let gw_state = Arc::new(HttpGatewayState {
             gateway: Arc::new(Mutex::new(GatewayState::new())),
         });
-        let mut listener = HttpListener::new("0.0.0.0:8778", gw_state);
+        let mut listener = HttpListener::new("127.0.0.1:0", gw_state);
         assert!(!listener.is_running());
         listener.start().unwrap();
         assert!(listener.is_running());
-        assert_eq!(listener.bound_address(), Some("0.0.0.0:8778".into()));
+        assert!(listener.bound_address().is_some(), "should have bound address");
         listener.stop().unwrap();
         assert!(!listener.is_running());
     }

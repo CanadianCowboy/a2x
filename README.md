@@ -94,7 +94,7 @@ This project is built **interactively**. The user (Josh) wants every AI assistan
 | **Crate prefix** | `a2x-*` (e.g. `a2x-core`, `a2x-sigma`) |
 | **Ecosystem** | Self-hosted (git dependencies, **not** crates.io) |
 | **Versioning** | Unified SemVer across all crates |
-| **Working directory** | `D:\projects\ailang` |
+| **Working directory** | Any directory (clone with `git clone <url> a2x`) |
 | **Config/data path** | `~/.a2x/` |
 
 ### Project Status
