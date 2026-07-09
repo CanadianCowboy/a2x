@@ -19,7 +19,7 @@ version = "0.9.0-alpha"
 edition = "2021"
 rust-version = "1.75.0"
 authors = ["A2X Contributors"]
-license = "MIT OR Apache-2.0"
+license = "AGPL-3.0"
 repository = "https://github.com/CanadianCowboy/a2x"
 description = "A2X — Agent-to-Anything: an AI-native programming language + runtime"
 
