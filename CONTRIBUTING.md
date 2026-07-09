@@ -243,7 +243,54 @@ When contributing as an AI agent, follow this communication protocol:
 
 ---
 
-## Release Process
+## Work Reports & Changelog
+
+### How It Works
+
+Every contributor writes a **work report** for their changes. These stay local (gitignored). The changelog is updated from them.
+
+```
+You write:  work-reports/2026-07-08-my-feature.md  (local, not tracked)
+Then run:   ./scripts/update-changelog.sh --apply
+Commits:    CHANGELOG.md is updated and versioned
+```
+
+### Writing a Work Report
+
+1. Copy `work-reports/TEMPLATE.md`
+2. Name it `YYYY-MM-DD-short-description.md`
+3. Fill in version, type, summary, changes, verification
+4. Run `./scripts/update-changelog.sh` to preview
+5. Run `./scripts/update-changelog.sh --apply` to update CHANGELOG.md
+6. Commit CHANGELOG.md along with your code
+
+### Changelog Script
+
+```bash
+# Preview what would be added
+./scripts/update-changelog.sh
+
+# Actually update CHANGELOG.md
+./scripts/update-changelog.sh --apply
+```
+
+The script scans `work-reports/` for new reports (tracked by `.last-processed` marker), extracts version/type/title from each, and inserts entries into CHANGELOG.md under `[unreleased]`.
+
+### Manual Changelog Update
+
+If you prefer to update CHANGELOG.md manually, add entries under the appropriate section:
+
+```markdown
+## [unreleased]
+
+### Added
+- New feature description
+
+### Fixed
+- Bug fix description
+```
+
+When releasing, replace `[unreleased]` with the version tag.
 
 ```bash
 # 1. Create release branch

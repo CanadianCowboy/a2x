@@ -29,6 +29,9 @@ desktop.ini
 # Work reports (internal dev notes, keep local)
 work-reports/
 
+# But keep the template for new contributors
+!work-reports/TEMPLATE.md
+
 # Temp / backup
 *.tmp
 *.bak
