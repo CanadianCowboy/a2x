@@ -1,0 +1,14 @@
+[book]
+title = "A2X Documentation"
+authors = ["CanadianCowboy"]
+language = "en"
+
+[build]
+build-dir = "book"
+create-missing = false
+
+[output.html]
+git-repository-url = "https://github.com/CanadianCowboy/a2x"
+
+[output.html.search]
+limit-results = 25

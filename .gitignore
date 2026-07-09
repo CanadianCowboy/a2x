@@ -36,3 +36,6 @@ work-reports/
 *.tmp
 *.bak
 *.checksum
+
+# Built doc site (source only in git)
+docs/book/book/
