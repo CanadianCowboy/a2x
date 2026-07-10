@@ -1,0 +1,96 @@
+name: Bug Report
+description: Report a bug in A2X
+title: "[BUG] "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Operator-Grade bug reporting.** Be precise. Include reproduction steps. Help us fix it fast.
+  - type: input
+    id: version
+    attributes:
+      label: A2X Version
+      description: Which version are you running? (`a2x --version` or check Cargo.toml)
+      placeholder: "v0.9.0-alpha"
+    validations:
+      required: true
+  - type: dropdown
+    id: crate
+    attributes:
+      label: Affected Crate
+      description: Which crate has the bug?
+      options:
+        - a2x-core
+        - a2x-sigma
+        - a2x-omega
+        - a2x-bus
+        - a2x-ccs
+        - a2x-agents
+        - a2x-gateway
+        - a2x-client
+        - a2x-cli
+        - a2x-probe
+        - a2x-startup
+        - Multiple / Unknown
+    validations:
+      required: true
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - Crash / Panic
+        - Incorrect behavior
+        - Performance regression
+        - Cosmetic / Minor
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened? What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction Steps
+      description: Exact commands or code to reproduce the bug.
+      render: bash
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Actual Output
+      description: Error messages, stack traces, logs.
+      render: text
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What should have happened?
+  - type: input
+    id: rust-version
+    attributes:
+      label: Rust Version
+      description: `rustc --version`
+      placeholder: "rustc 1.75.0"
+  - type: input
+    id: os
+    attributes:
+      label: Operating System
+      placeholder: "Ubuntu 24.04 / Windows 11 / macOS 14"
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-Submission Checklist
+      options:
+        - label: I searched existing issues and found no duplicates
+          required: true
+        - label: I am running the latest version from `master`
+          required: true
+        - label: I included all relevant error messages and logs
+          required: true

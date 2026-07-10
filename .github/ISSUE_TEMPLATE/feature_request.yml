@@ -1,0 +1,82 @@
+name: Feature Request
+description: Propose a new feature or enhancement for A2X
+title: "[FEATURE] "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Operator-Grade feature proposals.** Be clear. Be specific. Explain why it matters.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One paragraph. What do you want to add or change?
+    validations:
+      required: true
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: Why does this matter? What problem does it solve? Who benefits?
+    validations:
+      required: true
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Scope
+      description: How big is this change?
+      options:
+        - Small — single function or module
+        - Medium — new feature in existing crate
+        - Large — new crate or subsystem
+        - Massive — architectural change
+    validations:
+      required: true
+  - type: dropdown
+    id: crate
+    attributes:
+      label: Primary Crate
+      description: Which crate would this primarily affect?
+      options:
+        - a2x-core
+        - a2x-sigma
+        - a2x-omega
+        - a2x-bus
+        - a2x-ccs
+        - a2x-agents
+        - a2x-gateway
+        - a2x-client
+        - a2x-cli
+        - a2x-probe
+        - a2x-startup
+        - New crate
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed Design
+      description: How would this work? Include API sketches, architecture notes, or pseudocode.
+      render: rust
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: What other approaches did you consider? Why is this the best one?
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact & Risks
+      description: Breaking changes? Performance impact? Security considerations?
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-Submission Checklist
+      options:
+        - label: I searched existing issues and found no duplicates
+          required: true
+        - label: I read the relevant sub-plan(s) in `plans/`
+          required: true
+        - label: This aligns with the project's architecture and roadmap
+          required: true
