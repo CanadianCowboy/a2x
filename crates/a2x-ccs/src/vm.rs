@@ -423,6 +423,7 @@ impl CcsVm {
             }
 
             // 4b. Check advanced breakpoints (opcode, conditional).
+            #[allow(clippy::map_clone)]
             for bp in self.breakpoints.values().cloned() {
                 match &bp {
                     BreakpointType::Opcode(op) if *op == current_opcode && old_ip != 0 => {
