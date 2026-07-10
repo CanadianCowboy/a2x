@@ -1,15 +1,24 @@
-# A2X — Agent-to-Anything
+# ⚡ A2X — Agent-to-Anything
 
-**AI-native programming language and cognitive runtime.**
+<p align="center">
+  <strong>An AI-native programming language and cognitive runtime.</strong><br>
+  <em>Sigma ISA → Omega Compiler → CCS Virtual Machine</em>
+</p>
 
-A2X lets you program AI agents using Σ∞ (Sigma-Infinity) — a Unicode-based
-protocol language designed for cognitive operations. Agents express ideas
-through operators like **Bind** (synthesize concepts), **Differentiate**
-(split ideas), **Ground** (anchor to reality), and **Evolve** (learn over time).
+<p align="center">
+  <a href="https://github.com/CanadianCowboy/a2x">GitHub</a> ·
+  <a href="https://github.com/CanadianCowboy/a2x/releases/tag/v0.9.0-alpha">v0.9.0-alpha</a> ·
+  <a href="https://github.com/CanadianCowboy/a2x/discussions/1">Discussions</a> ·
+  <a href="https://github.com/CanadianCowboy/a2x/blob/master/LICENSE">AGPL-3.0</a>
+</p>
 
-Programs run on the **CCS** (Cognitive Control Substrate), a virtual machine
-with a WorldGraph of concepts, a StateField of beliefs, and a MemoryTrace of
-experience.
+---
+
+**A2X is not a traditional programming language.** It has no keywords, no human-readable syntax. It is a three-layer stack that AI agents use to write, compile, and execute programs at machine speed. A single Sigma packet encodes what would take hundreds of LLM tokens.
+
+This is the documentation. Read it to understand the stack, then [get started](quick-start.md).
+
+---
 
 ## Why A2X?
 
