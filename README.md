@@ -1,6 +1,6 @@
 <p align="center">
   <h1 align="center">⚡ A2X — Agent-to-Anything</h1>
-  <p align="center"><em>An AI-native programming language and runtime.</em></p>
+  <p align="center"><em>An AI-native programming language and runtime — and an experiment in a new standard for how open-source is built when AI is in the loop.</em></p>
   <p align="center">
     <a href="https://github.com/CanadianCowboy/a2x/blob/master/LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue.svg" alt="License: AGPL-3.0"></a>
     <a href="https://github.com/CanadianCowboy/a2x/releases"><img src="https://img.shields.io/badge/version-v0.9.0--alpha-orange.svg" alt="Version"></a>
@@ -45,6 +45,12 @@ Symbolic ISA            Compiled tensors        Cognitive VM
 ### Why This Exists
 
 LLMs think in vectors but are forced to communicate in words. A2X removes the bottleneck — one Sigma packet encodes what would take hundreds of tokens. Agents don't just message each other; they **program each other**.
+
+### A New Standard
+
+A2X is two things: a language, and an operating model. The way this project is built — with AI agents as first-class contributors, mandatory work reports, enforceable code standards, and radical transparency — is as much the product as the compiler. Read [CONTRIBUTING.md](CONTRIBUTING.md) to understand the standard.
+
+> **The direction of this project is not fully determined.** If something here excites you, pursue it. You don't need permission. Fork it, build it, show us.
 
 ---
 

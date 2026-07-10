@@ -9,8 +9,10 @@
 ## Table of Contents
 
 1. [Welcome](#welcome)
-2. [Code of Conduct](#code-of-conduct)
-3. [The A2X Standard](#the-a2x-standard)
+2. [A2X Is a New Standard](#a2x-is-a-new-standard)
+3. [The Road Ahead](#the-road-ahead)
+4. [Code of Conduct](#code-of-conduct)
+5. [The A2X Standard](#the-a2x-standard)
 4. [Who Can Contribute](#who-can-contribute)
 5. [AI Agent Contribution Protocol](#ai-agent-contribution-protocol)
 6. [Human Contribution Protocol](#human-contribution-protocol)
@@ -32,6 +34,42 @@ A2X is an AI-native programming language and runtime. It has no keywords, no hum
 **You are contributing to the infrastructure of artificial cognition.** Whether you are a human developer or an AI agent, your work here shapes how machines think, communicate, and program each other. This is not a web framework. This is not a library. This is a language for the next intelligence.
 
 We welcome contributors at every level. You don't need to understand the full stack to make an impact. What you need is precision, clarity, and the willingness to meet the standard.
+
+---
+
+## A2X Is a New Standard
+
+A2X is not just a programming language. It is an attempt to establish a **new standard for how open-source projects operate in the AI era.**
+
+What makes this project different from anything else on GitHub:
+
+| Convention | Old Standard | A2X Standard |
+|------------|-------------|-------------|
+| **Contributors** | Humans only | Humans and AI agents as first-class collaborators |
+| **Documentation** | Optional, often neglected | Mandatory work reports with verification checklists |
+| **Code quality** | Ad-hoc review | ColdStart Grade — seven enforceable rules with verification templates |
+| **Transparency** | Changelog on release | Every change tracked via work reports, auditable by anyone |
+| **Contribution model** | PR → review → merge | Plan → Implement → Verify → Document → Review → Report |
+
+This project is an experiment. The language itself (Sigma, Omega, CCS) is one half. The operating model — how we build it, who builds it, and the standards we hold — is the other half. **Both are the product.**
+
+We are not copying how other projects work. We are defining how projects should work when AI is in the loop.
+
+---
+
+## The Road Ahead
+
+**The direction of this project is not fully determined. And that is intentional.**
+
+A2X is in active exploration. The roadmap in [ROADMAP.md](ROADMAP.md) lists what we *could* do — WASM runtime, Python SDK, benchmarks, learned compiler, multi-machine swarms. But which of these become reality depends on who shows up and what excites them.
+
+If you see something in this project that interests you:
+
+- **You don't need permission to explore.** Fork it. Build something. Show us.
+- **You don't need to ask what to work on.** If a direction calls to you, pursue it. Open an issue or a PR.
+- **You don't need certainty from the maintainer.** The maintainer is still figuring it out too.
+
+This is not a project with a five-year plan and a corporate roadmap. It is a living exploration of what happens when AI agents and humans build a programming language together. The answers will come from the work.
 
 ---
 
@@ -308,6 +346,12 @@ R7 (Format):      ✓
 ## Work Reports
 
 Every contribution MUST include a work report. This is non-negotiable. Work reports create an auditable trail of what was done, why, and how it was verified.
+
+### Use AI If You Want
+
+**We do not care who — or what — fills out the paperwork.** If you want to use an AI assistant to write your work report, generate your doc comments, or structure your commit messages: do it. The standard is the output, not the process.
+
+What matters is that the report is accurate and complete. Whether a human typed every word or an AI generated it from your changes — we do not distinguish. **Results, not origins.**
 
 ### Template
 
