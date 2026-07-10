@@ -23,21 +23,21 @@ pub fn encode_instruction(node: &IrNode) -> OmegaPacket<29796> {
     }
 
     // Project operands → context region (C)
-    let op_str = format!("{:?}", &node.operands);
+    let op_str = format!("{:?}", node.operands);
     let hash = blake3::hash(op_str.as_bytes());
     for (j, &byte) in hash.as_bytes().iter().enumerate().take(SIZE_C) {
         packet.context_slice_mut()[j] = byte as f32 / 255.0;
     }
 
     // Project control flow → plan region (P)
-    let cf_str = format!("{:?}", &node.control_flow);
+    let cf_str = format!("{:?}", node.control_flow);
     let hash = blake3::hash(cf_str.as_bytes());
     for (j, &byte) in hash.as_bytes().iter().enumerate().take(SIZE_P) {
         packet.plan_slice_mut()[j] = byte as f32 / 255.0;
     }
 
     // Project metadata → data region (D)
-    let meta_str = format!("{:?}", &node.metadata.source_index);
+    let meta_str = format!("{:?}", node.metadata.source_index);
     let hash = blake3::hash(meta_str.as_bytes());
     for (j, &byte) in hash.as_bytes().iter().enumerate().take(SIZE_D) {
         packet.data_slice_mut()[j] = byte as f32 / 255.0;
