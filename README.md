@@ -54,6 +54,40 @@ A2X is two things: a language, and an operating model. The way this project is b
 
 ---
 
+## Project Status
+
+**Alpha. Active exploration. Direction not fixed.**
+
+A2X is real, functional, and tested — 70+ tests, 12 crates, web dashboard, chat agent, CCS VM. But it is not a finished product and it does not have a fixed roadmap. The plans in [ROADMAP.md](ROADMAP.md) are possibilities, not promises.
+
+What becomes real depends on who shows up and what excites them. If you see something here you want to build, that direction is as valid as any other. **Open a PR, start a discussion, or just fork it and go.**
+
+### What's Solid
+
+| Area | Status |
+|------|--------|
+| Sigma tokenizer + parser | Stable, fuzz-tested, property-tested |
+| CCS VM (7 operators, Fork/Merge) | Functional, integration-tested |
+| Omega compiler pipeline | Functional, wire-format tested |
+| Message bus + discovery | Functional, cross-machine tested |
+| Web dashboard | Live, WebSocket streaming |
+| Chat agent (Ollama/OpenAI) | Functional, 14 tools |
+| CLI (shell, dashboard, monitor) | Functional |
+| Client SDKs (Rust, Python, TS) | Functional |
+
+### What's Open
+
+See [ROADMAP.md](ROADMAP.md) for the full list. Highlights:
+
+- **WASM runtime** — execute A2X in browsers
+- **Python SDK on PyPI** — `pip install a2x-client`
+- **Benchmark suite** — prove performance at scale
+- **Learned compiler** — neural encoder/decoder for Omega
+- **Multi-machine swarms** — agents across hosts
+- **Community contributions** — whatever you bring
+
+---
+
 ## Quick Start
 
 ```bash
