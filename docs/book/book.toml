@@ -1,14 +1,18 @@
 [book]
 title = "A2X Documentation"
-authors = ["CanadianCowboy"]
+authors = ["ColdStart Intelligence Labs"]
+description = "The AI-native programming language and runtime — Sigma ISA, Omega compiler, CCS cognitive VM."
 language = "en"
-
-[build]
-build-dir = "book"
-create-missing = false
+text-direction = "ltr"
 
 [output.html]
 git-repository-url = "https://github.com/CanadianCowboy/a2x"
+git-repository-icon = "fa-github"
+edit-url-template = "https://github.com/CanadianCowboy/a2x/edit/master/docs/book/src/{path}"
+site-url = "/a2x/"
+no-section-label = false
+copy-fonts = true
 
-[output.html.search]
-limit-results = 25
+[output.html.fold]
+enable = true
+level = 1
