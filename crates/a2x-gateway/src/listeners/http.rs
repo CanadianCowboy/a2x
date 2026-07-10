@@ -581,7 +581,10 @@ mod tests {
         assert!(!listener.is_running());
         listener.start().unwrap();
         assert!(listener.is_running());
-        assert!(listener.bound_address().is_some(), "should have bound address");
+        assert!(
+            listener.bound_address().is_some(),
+            "should have bound address"
+        );
         listener.stop().unwrap();
         assert!(!listener.is_running());
     }

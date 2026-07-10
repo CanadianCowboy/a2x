@@ -156,12 +156,7 @@ async fn handle_vm_command(
     command: &str,
     args: &serde_json::Value,
 ) {
-    let vm_arc = match state
-        .gateway
-        .lock()
-        .ok()
-        .map(|gw| gw.chat_ccs_vm.clone())
-    {
+    let vm_arc = match state.gateway.lock().ok().map(|gw| gw.chat_ccs_vm.clone()) {
         Some(v) => v,
         None => {
             let _ = socket

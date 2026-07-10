@@ -420,13 +420,21 @@ mod tests {
 
     #[test]
     fn test_agent_key_path_sanitizes_id() {
-        let path = agent_key_path("evil/../../etc/passwd").unwrap();
-        let filename = path.file_name().unwrap().to_str().unwrap();
-        // Slashes should be replaced with underscores
-        assert!(!filename.contains('/'));
-        assert!(!filename.contains('\\'));
-        assert!(filename.ends_with(".key"));
-        assert!(filename.contains("evil"));
+        let result = agent_key_path("evil/../../etc/passwd");
+        match result {
+            Ok(path) => {
+                let filename = path.file_name().unwrap().to_str().unwrap();
+                // Slashes should be replaced with underscores
+                assert!(!filename.contains('/'));
+                assert!(!filename.contains('\\'));
+                assert!(filename.ends_with(".key"));
+                assert!(filename.contains("evil"));
+            }
+            Err(KeyStorageError::HomeDirNotFound) => {
+                // Expected in CI environments without HOME set
+            }
+            Err(e) => panic!("Unexpected error: {e}"),
+        }
     }
 
     #[test]
