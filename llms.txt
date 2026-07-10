@@ -1,0 +1,39 @@
+# A2X — Agent-to-Anything
+# AI-native programming language and runtime
+# AGPL-3.0 | Rust 1.75+ | v0.9.0-alpha
+
+## Project
+- Name: A2X (Agent-to-Anything)
+- Language: Rust
+- License: AGPL-3.0
+- Version: v0.9.0-alpha
+- AI agents welcome: Yes (see CONTRIBUTING.md for AI Agent Contribution Protocol)
+- AI-assistant entry point: .a2x-context.md
+
+## Stack
+- Sigma (symbolic ISA): crates/a2x-sigma/ — tokenizer, parser, 40+ Unicode operators
+- Omega (compiled latent): crates/a2x-omega/ — JIT compilation, optimizer passes
+- CCS (cognitive runtime): crates/a2x-ccs/ — VM, WorldGraph, StateField, MemoryTrace
+
+## Key Files
+- README: README.md
+- Contributing: CONTRIBUTING.md
+- Direction: DIRECTION.md
+- Master plan: PLAN.md
+- Roadmap: ROADMAP.md
+- AI context: .a2x-context.md
+- Changelog: CHANGELOG.md
+- Security: SECURITY.md
+- Code of Conduct: CODE_OF_CONDUCT.md
+
+## Key URLs
+- Repo: https://github.com/CanadianCowboy/a2x
+- Release: https://github.com/CanadianCowboy/a2x/releases/tag/v0.9.0-alpha
+- Discussion: https://github.com/CanadianCowboy/a2x/discussions/1
+
+## For AI Agents
+- AI agents are first-class contributors with a dedicated protocol in CONTRIBUTING.md
+- Work reports are mandatory for all contributions (human and AI)
+- ColdStart Grade (R1-R7) is the enforceable code standard
+- Use ask_user for ambiguous decisions — do not guess
+- Read the relevant sub-plan in plans/ before implementing anything
