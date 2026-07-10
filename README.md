@@ -5,9 +5,22 @@
     <a href="https://github.com/CanadianCowboy/a2x/blob/master/LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue.svg" alt="License: AGPL-3.0"></a>
     <a href="https://github.com/CanadianCowboy/a2x/releases"><img src="https://img.shields.io/badge/version-v0.9.0--alpha-orange.svg" alt="Version"></a>
     <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-1.75%2B-brightgreen.svg" alt="Rust: 1.75+"></a>
-    <a href="https://github.com/CanadianCowboy/a2x/actions"><img src="https://img.shields.io/badge/tests-70%20passing-success.svg" alt="Tests: 70 passing"></a>
+    <a href="https://github.com/CanadianCowboy/a2x/actions"><img src="https://github.com/CanadianCowboy/a2x/actions/workflows/ci.yml/badge.svg" alt="CI Status"></a>
   </p>
 </p>
+
+---
+
+## Contents
+
+- [What Is A2X?](#what-is-a2x)
+- [Quick Start](#quick-start)
+- [Features](#features)
+- [Architecture](#architecture)
+- [Crates](#crates)
+- [Documentation](#documentation)
+- [Contributing](#contributing)
+- [License](#license)
 
 ---
 
