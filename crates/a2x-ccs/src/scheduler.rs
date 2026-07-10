@@ -110,7 +110,7 @@ impl ProgramScheduler {
     pub async fn shutdown(&self) {
         self.cancel_token.cancel();
         let mut programs = self.programs.write().await;
-        for (_, entry) in programs.iter_mut() {
+        for entry in programs.values_mut() {
             if let Some(handle) = entry.task_handle.take() {
                 handle.abort();
                 entry.status = ScheduledProgramStatus::Cancelled;
