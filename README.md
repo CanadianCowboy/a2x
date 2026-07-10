@@ -1,43 +1,70 @@
-# A2X — Agent-to-Anything
-
-> **An AI-native programming language + runtime.**
->
-> Sigma-infinity (hyper-symbolic ISA) → Omega (compiled latent representation) → CCS (cognitive runtime VM)
->
-> Not a language for humans. A language for *AI agents to think in, program in, compile, and execute.*
+<p align="center">
+  <h1 align="center">⚡ A2X — Agent-to-Anything</h1>
+  <p align="center"><em>An AI-native programming language and runtime.</em></p>
+  <p align="center">
+    <a href="https://github.com/CanadianCowboy/a2x/blob/master/LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue.svg" alt="License: AGPL-3.0"></a>
+    <a href="https://github.com/CanadianCowboy/a2x/releases"><img src="https://img.shields.io/badge/version-v0.9.0--alpha-orange.svg" alt="Version"></a>
+    <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-1.75%2B-brightgreen.svg" alt="Rust: 1.75+"></a>
+    <a href="https://github.com/CanadianCowboy/a2x/actions"><img src="https://img.shields.io/badge/tests-70%20passing-success.svg" alt="Tests: 70 passing"></a>
+  </p>
+</p>
 
 ---
 
-## Quick Start (Alpha)
+## What Is A2X?
+
+A2X is a **programming language built for AI agents**, not humans. It has no keywords, no syntax in the traditional sense — instead, it's a three-layer stack that agents use to **write, compile, and execute programs** at machine speed.
+
+```
+Σ∞ (Sigma)         →    Ω (Omega)         →    CCS (Runtime)
+Symbolic ISA            Compiled tensors        Cognitive VM
+"Source code"           "Machine code"          "The CPU"
+```
+
+### The Stack
+
+| Layer | Role | Analogy |
+|-------|------|---------|
+| **Σ∞** Sigma Infinity | Symbolic programming language / ISA. Dense Unicode instructions. | Assembly language |
+| **Ω** Omega | Compiled latent representation. Pure tensors, zero symbols. | Compiled binary |
+| **CCS** CryoCore Cognitive Substrate | Runtime VM. Executes programs, manages memory and state. | OS + CPU |
+
+### Why This Exists
+
+LLMs think in vectors but are forced to communicate in words. A2X removes the bottleneck — one Sigma packet encodes what would take hundreds of tokens. Agents don't just message each other; they **program each other**.
+
+---
+
+## Quick Start
 
 ```bash
-# Clone and build
-git clone https://github.com/your-org/a2x
+# Clone
+git clone https://github.com/CanadianCowboy/a2x.git
 cd a2x
+
+# Build
 cargo build --release
 
-# Launch the dashboard (one command)
+# Launch the dashboard (browser opens at http://127.0.0.1:8778)
 cargo run --release -p a2x-cli -- dashboard
 
-# Or with Ollama chat enabled
+# With Ollama chat enabled
 A2X_CHAT_BACKEND=ollama A2X_CHAT_MODEL=llama3.2 cargo run --release -p a2x-cli -- dashboard
 
-# Try the interactive shell
+# Interactive Sigma REPL
 cargo run --release -p a2x-cli -- shell
 
-# Parse and execute a Sigma program
+# Execute a Sigma program
 cargo run --release -p a2x-cli -- run --program "⟦Σ∞⟧⟬I:✕ ∷ P:✕⟭"
 ```
 
-Open `http://127.0.0.1:8778` in your browser to see the live dashboard.
+### CLI Commands
 
-### Available CLI Commands
-
-| Command | Description |
+| Command | What it does |
 |---------|-------------|
-| `a2x dashboard` | Launch the web dashboard (gateway + WebSocket UI) |
+| `a2x dashboard` | Web dashboard with live agent graph, VM inspector, and chat |
 | `a2x shell` | Interactive Sigma REPL with colored output |
-| `a2x monitor` | Bus traffic viewer — agents, capabilities, dispatch |
+| `a2x monitor` | Live bus traffic viewer |
 | `a2x run -p <expr>` | Parse and execute a Sigma program |
 | `a2x parse -p <expr>` | Parse and display a Sigma program |
 | `a2x agents` | List registered agents with capabilities |
@@ -45,115 +72,40 @@ Open `http://127.0.0.1:8778` in your browser to see the live dashboard.
 
 ### Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `A2X_CHAT_BACKEND` | `none` | `ollama` or `openai` |
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `A2X_CHAT_BACKEND` | `none` | `ollama` or `openai` for the chat agent |
 | `A2X_CHAT_MODEL` | `llama3.2` | Model name |
-| `A2X_CHAT_API_URL` | `http://localhost:11434/v1/chat/completions` | LLM API endpoint |
-| `A2X_CHAT_API_KEY` | (empty) | API key for OpenAI |
-| `A2X_CHAT_CONTEXT_TOKENS` | `32768` | Context window size |
-| `A2X_HTTP_PORT` | `8778` | Dashboard/API port |
-| `A2X_API_KEY` | (none) | API key for authenticated access |
-
-### What's in the Dashboard
-
-- **Agents panel** — live agent cards with capabilities
-- **WorldGraph** — force-directed graph of concept nodes and relations
-- **StateField heatmap** — tensor region visualization
-- **VM inspector** — status, region readout, memory trace
-- **Chat tab** — streaming chat with Ollama/OpenAI, model switching, conversation persistence
-- **Sigma playground** — write and execute Sigma programs inline
-- **Bus traffic log** — real-time event stream
-- **Context usage bar** — tokens used / remaining
+| `A2X_HTTP_PORT` | `8778` | Dashboard and API port |
+| `A2X_API_KEY` | (none) | API key for authenticated HTTP access |
 
 ---
 
-## Quick Reference for AI Assistants
+## Features
 
-> **If you are an AI agent reading this file for the first time:** Welcome to A2X. This README is designed as a handoff document — it contains everything you need to understand the project, the user's working style, and where to start. Read the full file before taking any actions.
+### 🌐 Web Dashboard
+Live visualization of the entire system in your browser — agent cards, force-directed concept graph, tensor heatmaps, VM inspector, Sigma playground, and streaming chat with model switching.
 
-### Working Style
+### 🤖 Built-in Chat Agent
+Connect to Ollama or OpenAI and talk to an AI that can execute A2X programs and reason about the ecosystem in real-time.
 
-This project is built **interactively**. The user (Josh) wants every AI assistant to:
+### 📡 Multi-Protocol Gateway
+HTTP REST API, WebSocket streaming, TCP binary, and stdin/stdout — anything that can make a network connection can speak A2X.
 
-- **Plan first, code second** — discuss and agree on design before writing code. Read plans, ask clarifying questions, then implement.
-- **Be asked questions** — stop and ask when there are important decisions. Don't assume.
-- **Work incrementally** — small, reviewable steps rather than big bang changes. Each step should be independently verifiable.
-- **No surprises** — explain what you're doing. Confirm before taking significant actions (e.g., running destructive commands, publishing, deleting files).
-- **Read files before editing** — always read the current state of a file before modifying it.
-- **Ask for clarification** — if requirements are ambiguous, do not guess. Stop and ask.
-- **Document your work** — every AI agent MUST create a work report `.md` file in `work-reports/` named `YYYY-MM-DD-description.md` before committing.
+### 🧠 CCS Virtual Machine
+A full cognitive runtime: WorldGraph (heap), StateField (registers), MemoryTrace (execution history), 7 core operators, and a parallel swarm execution model.
 
-### Key Decisions (Settled — Do Not Revisit)
+### 🔧 Sigma Programming Language
+40+ Unicode operators across Intent, Context, Plan, and Data categories. Programs are sequences of packets. Supports branching, sub-plans, recursion, parallel forks, and self-modifying code.
 
-| Decision | Value |
-|----------|-------|
-| **Project name** | A2X (Agent-to-Anything) |
-| **Runtime name** | CCS (CryoCore Cognitive Substrate) |
-| **Implementation language** | Rust (1.75+ MSRV) |
-| **Crate prefix** | `a2x-*` (e.g. `a2x-core`, `a2x-sigma`) |
-| **Ecosystem** | Self-hosted (git dependencies, **not** crates.io) |
-| **Versioning** | Unified SemVer across all crates |
-| **Working directory** | Any directory (clone with `git clone <url> a2x`) |
-| **Config/data path** | `~/.a2x/` |
+### 📊 Omega Compiler
+JIT compilation pipeline from Sigma to Omega with optimizer passes: constant folding, dead code elimination, instruction fusion, and layout optimization.
 
-### Project Status
+### 📦 Client SDKs
+Connect external applications to A2X with Rust, Python, or TypeScript SDKs.
 
-**Current version:** v0.9.0-alpha (70+ tests, 12 crates building)
-
-- [x] Phase 0 — Scaffold & Core: Workspace, all 12 crates
-- [x] Phase 1 — Sigma Protocol Core: Tokenizer, parser, operator tables
-- [x] Phase 2 — CCS Cognitive Substrate: WorldGraph, StateField, MemoryTrace, 7 operators
-- [x] Phase 3 — Omega Latent Protocol: Compiler pipeline, TCP transport
-- [x] Phase 4 — Training & Learning: Learned encoder/decoder
-- [x] Phase 5 — Probe & Debug: Probe protocol, breakpoints, tracer
-- [x] Phase 6 — Entity Gateway: Gateway service, 4 listeners, auth, client SDK
-- [x] Phase 7 — Ecosystem Hardening: ChatAgent, web dashboard, context memory, persistence, async VM
-
----
-
-## What Is A2X?
-
-A2X is a **three-layer programming language stack** for AI agents:
-
-1. **Sigma Infinity** — the symbolic programming language / ISA. Packets are instructions, sequences of packets are programs. Uses special Unicode characters as operators for ultra-dense encoding.
-
-2. **Omega** — the compiled latent representation. Sigma programs can be JIT-compiled into pure tensor form for maximum execution speed.
-
-3. **CCS (CryoCore Cognitive Substrate)** — the runtime virtual machine that executes Sigma and Omega programs. Manages WorldGraph (heap), StateField (registers), and MemoryTrace (execution history).
-
-### What Makes It a Programming Language
-
-| Concept | A2X Equivalent |
-|---------|----------------|
-| Values | ConceptVectors — dense embeddings |
-| Variables | Labeled nodes in WorldGraph |
-| Instructions | Sigma packets (I+C+P+D fields) |
-| Programs | Sequences of Sigma packets ("packet streams") |
-| Control flow | Plan operators: branch, merge, loop, recursion |
-| Functions | Descend into sub-plan, ascend from meta-plan |
-| Memory / Heap | WorldGraph — persistent graph of concepts |
-| Registers / Stack | StateField — high-dimensional working memory |
-| Compilation | Sigma → Omega transformation |
-| Execution | CCS runtime — Evolve, Reflect, Plan operators |
-
----
-
-## Official Crates
-
-| Crate | Purpose |
-|-------|---------|
-| `a2x-core` | Primitive types, traits, common enums (zero-dependency) |
-| `a2x-sigma` | Sigma tokenizer, parser, packet types, SigmaProgram |
-| `a2x-omega` | Omega tensor packets, compiler pipeline, decompiler |
-| `a2x-bus` | Message bus, routing, transport, agent discovery |
-| `a2x-ccs` | CCS VM implementation, WorldGraph, StateField, MemoryTrace |
-| `a2x-agents` | Built-in agents (Orchestrator, CLI, LLM, CCS, Chat) |
-| `a2x-gateway` | Entity gateway, protocol listeners, auth, entity registry |
-| `a2x-client` | Rust client SDK for connecting external apps to A2X |
-| `a2x-cli` | CLI binary (`a2x shell`, `a2x dashboard`, `a2x run`) |
-| `a2x-probe` | Probe/debug tools for inspecting CCS internals |
-| `a2x-startup` | Boot sequence, config, persistence, shutdown, key rotation |
+### 🔒 AGPL-3.0 Licensed
+Full copyleft — forks, modifications, and cloud deployments all must stay open.
 
 ---
 
@@ -161,80 +113,91 @@ A2X is a **three-layer programming language stack** for AI agents:
 
 ```
 ┌───────────────────────────────────────────────────┐
-│                    SIGMA  SOURCE                  │
-│  Hyper-symbolic ISA — packets = instructions       │
-│  Sequences of packets = programs                   │
+│                  SIGMA SOURCE                      │
+│  Hyper-symbolic ISA — packets are instructions     │
+│  Sequences of packets form programs                │
 ├───────────────────────────────────────────────────┤
 │               ↓  COMPILATION  ↓                   │
 ├───────────────────────────────────────────────────┤
-│                    OMEGA  LATENT                  │
+│                  OMEGA LATENT                      │
 │  Compiled neural representation, pure tensors      │
 ├───────────────────────────────────────────────────┤
 │               ↓  EXECUTION  ↓                     │
 ├───────────────────────────────────────────────────┤
-│              CCS  RUNTIME / VM                    │
+│                CCS RUNTIME / VM                    │
 │  WorldGraph = heap, StateField = registers         │
-│  MemoryTrace = execution log                      │
+│  MemoryTrace = execution log                       │
 └───────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Where to Start Reading
+## Crates
 
-- **[PLAN.md](PLAN.md)** — the full project plan and detailed design (30 sections)
-- **[ROADMAP.md](ROADMAP.md)** — expansion ideas and priority order
-- **[docs/](docs/)** — protocol specifications and architecture docs
-- **[CHANGELOG.md](CHANGELOG.md)** — full version history and release notes
-
----
-
-## Agent-to-Anything
-
-The name says it all:
-- **Agent** — any AI agent (LLM, CLI, robot, cognitive)
-- **To** — the connection, the protocol, the language
-- **Anything** — any other agent, any system, any environment
-
-A2X is the language that makes "anything" reachable.
+| Crate | Purpose | Dependencies |
+|-------|---------|:---:|
+| `a2x-core` | Primitives, traits, enums | Zero |
+| `a2x-sigma` | Tokenizer, parser, packet types | core |
+| `a2x-omega` | Tensor packets, compiler pipeline | core |
+| `a2x-bus` | Message bus, routing, transport, discovery | core, sigma |
+| `a2x-ccs` | VM, WorldGraph, StateField, MemoryTrace | core |
+| `a2x-agents` | Orchestrator, CLI, LLM, CCS, Chat agents | core, sigma, bus, ccs |
+| `a2x-gateway` | Entity gateway, HTTP/WS/TCP/stdio listeners | bus, sigma |
+| `a2x-client` | Rust client SDK | core |
+| `a2x-cli` | CLI binary (`a2x` command) | agents, bus |
+| `a2x-probe` | Debug tools, tracer, inspector | ccs |
+| `a2x-startup` | Boot sequence, config, persistence, shutdown | core |
 
 ---
 
-## Coding Standard — A2X AI-Native Coding Grade
+## Documentation
 
-> This standard is written for **AI agents**, not humans.
+- **[ROADMAP.md](ROADMAP.md)** — Expansion plans and priorities
+- **[PLAN.md](PLAN.md)** — Full 30-section design document
+- **[CHANGELOG.md](CHANGELOG.md)** — Version history
+- **[docs/](docs/)** — Protocol specifications and architecture deep-dives
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** — How to contribute
 
-### R1: Structure & Predictability
-- No hardcoded constants without named bindings
-- No hidden control flow. Errors explicit via `Result<T, E>`
-- Functions do one thing. Files contain one logical module.
+---
 
-### R2: Self-Verification
-- Unit test for new functions. Integration test for new features.
-- Test error variants, edge cases (empty, max, malformed).
+## Contributing
 
-### R3: Context Preservation
-- Doc comments on all pub items
-- Sub-plan references: `// See plans/03-ccs-vm.md §5`
-- Rationale comments on non-obvious decisions
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-### R4: Determinism Boundary
-- Component interfaces must be deterministic
-- Learned internals may be non-deterministic
-- Explicit RNG seeding in infrastructure code
+### Development
 
-### R5: Safety by Construction
-- Illegal states unrepresentable via type system
-- Input validation at the boundary
-- `unsafe` requires justification comment
+```bash
+# Run all tests
+cargo test --workspace --lib
 
-### R6: Minimal Delta
-- Minimum diff required. No unrelated refactoring.
-- Note issues for later, don't fix them unprompted.
+# Check formatting + lints
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
 
-### R7: Format & Conventions
-- `cargo fmt` and `cargo clippy -- -D warnings` must pass
-- `snake_case` functions, `CamelCase` types, `SCREAMING_SNAKE` constants
-- Feature gates on optional deps
+# Pre-commit hook
+bash scripts/setup-hooks.sh
+```
 
-*ColdStart Intelligence Labs — Precision. Clarity. Operator-Grade.*
+### CI/CD
+
+GitHub Actions runs on every push to `master`:
+- `cargo fmt --check`
+- `cargo clippy -D warnings`
+- `cargo build`
+- `cargo test`
+- Ubuntu + Windows
+
+---
+
+## License
+
+**[AGPL-3.0](LICENSE)** — GNU Affero General Public License v3.0.
+
+This is a strong copyleft license that requires anyone who distributes or serves this software (including as a cloud service) to share their source code. Forks must stay open. Cloud wrappers must stay open. The end user is always protected.
+
+---
+
+<p align="center">
+  <strong>ColdStart Intelligence Labs</strong><br>
+  <em>Precision. Clarity. Operator-Grade.</em>
+</p>
