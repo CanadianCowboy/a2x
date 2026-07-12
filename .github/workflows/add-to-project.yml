@@ -1,0 +1,40 @@
+# Auto-add new issues and PRs to the A2X Roadmap project (v2).
+#
+# How it works:
+#   - Every time an issue or PR is opened (or reopened), this workflow fires
+#     and adds the item as a card in the "A2X" project at:
+#       https://github.com/users/CanadianCowboy/projects/4
+#   - The new card lands with no fields set. Fill Priority/Crate/Effort
+#     manually via the project UI, or use `gh project item-edit`.
+#
+# Maintainer setup (one-time):
+#   1. Create a Personal Access Token with the `project` scope
+#      (classic PAT: tick `project` alongside `repo`; fine-grained: User
+#      permissions -> Projects -> Read and write).
+#   2. Add it as a repo secret named `ADD_TO_PROJECT_TOKEN`:
+#        Repo Settings -> Secrets and variables -> Actions -> New repository secret
+#   3. This is a DIFFERENT token than PERSONAL_ACCESS_TOKEN (used by the CLA
+#      bot for a different scope). If your CLA PAT is classic with both
+#      `repo` and `project` scopes, you can point ADD_TO_PROJECT_TOKEN at
+#      the same value; otherwise make a new one.
+
+name: Add to Project
+
+on:
+  issues:
+    types: [opened, reopened]
+  pull_request_target:
+    types: [opened, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  add-to-project:
+    name: Add issue/PR to A2X Roadmap
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/add-to-project@v1.0.2
+        with:
+          project-url: https://github.com/users/CanadianCowboy/projects/4
+          github-token: ${{ secrets.ADD_TO_PROJECT_TOKEN }}
