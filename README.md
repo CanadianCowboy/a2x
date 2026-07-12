@@ -222,6 +222,7 @@ Humans and AI agents are both welcome; we keep the human path short.
 - **Humans →** [CONTRIBUTING.md](CONTRIBUTING.md) — 5-minute read. Quick start, PR flow, CLA sign-off.
 - **AI agents (Claude, GPT, Copilot, Cursor, Aider, etc.) →** [AGENTS.md](AGENTS.md) — the working protocol and code standard.
 - **Legal step (one-time) →** [CLA.md](CLA.md). Our CLA bot handles it in one PR comment.
+- **Roadmap board →** [A2X Project](https://github.com/users/CanadianCowboy/projects/4) — priority-ordered cards, live status.
 - **Newcomer picks →** [good first issue](https://github.com/CanadianCowboy/a2x/labels/good%20first%20issue).
 
 ### Development
