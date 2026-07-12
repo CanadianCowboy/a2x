@@ -1,6 +1,8 @@
 # A2X — Expansion Roadmap
 
 > Beyond the Team Briefing. Growing A2X into a visible, usable, impressive project.
+>
+> **For live status, priorities, and effort estimates, see the [A2X Project board](https://github.com/users/CanadianCowboy/projects/4).** Each roadmap item below has a tracking issue there; this document is the narrative "why", the board is the "when".
 
 ---
 
