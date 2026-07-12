@@ -76,7 +76,5 @@ body:
       options:
         - label: I searched existing issues and found no duplicates
           required: true
-        - label: I read the relevant sub-plan(s) in `plans/`
-          required: true
-        - label: This aligns with the project's architecture and roadmap
-          required: true
+        - label: I read the relevant sub-plan(s) in `plans/` (recommended for anything larger than a small feature)
+        - label: This aligns with the project's architecture and roadmap (maintainers will confirm)

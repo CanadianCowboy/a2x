@@ -1,6 +1,6 @@
 ## Description
 
-<!-- What does this PR do? One paragraph summary. -->
+<!-- What does this PR do? One paragraph. -->
 
 ## Type
 
@@ -14,8 +14,6 @@
 
 ## Crate(s) Affected
 
-<!-- Check all that apply -->
-
 - [ ] a2x-core
 - [ ] a2x-sigma
 - [ ] a2x-omega
@@ -28,42 +26,23 @@
 - [ ] a2x-probe
 - [ ] a2x-startup
 
-## Changes
-
-<!-- Bullet list of what changed and why -->
-
 ## Verification
-
-<!-- Confirm all checks pass -->
 
 - [ ] `cargo fmt --all --check` passes
 - [ ] `cargo clippy --workspace --all-targets -- -D warnings` passes
-- [ ] `cargo build --workspace` passes
-- [ ] `cargo test --workspace` passes (N tests)
-- [ ] Manual testing performed (describe below)
+- [ ] `cargo test --workspace` passes
 
-## ColdStart Grade
+## CLA
 
-<!-- Confirm each rule -->
-
-- [ ] R1 (Structure) — No magic values, errors explicit, functions do one thing
-- [ ] R2 (Verification) — Tests added for new functions, edge cases covered
-- [ ] R3 (Context) — Doc comments on pub items, rationale on non-obvious decisions
-- [ ] R4 (Boundary) — Deterministic interfaces, RNG seeded where applicable
-- [ ] R5 (Safety) — Illegal states unrepresentable, no `unwrap()` in libraries
-- [ ] R6 (Minimal) — No scope creep, minimum diff to solve the problem
-- [ ] R7 (Format) — `cargo fmt` + `cargo clippy` clean, conventions followed
-
-## Work Report
-
-<!-- Link to or paste the relevant work report -->
+- [ ] I have signed the CLA (the bot will confirm on first PR — see [CLA.md](../CLA.md))
 
 ## Related Issues
 
-<!-- Link any related issues: Closes #123, Relates to #456 -->
+<!-- Link related issues: Closes #123, Relates to #456 -->
 
----
+## Work Report (optional for humans, required for AI)
 
-<p align="center">
-  <strong>ColdStart Intelligence Labs</strong> — <em>Precision. Clarity. Operator-Grade.</em>
-</p>
+<!--
+For larger human-authored changes, link a work-reports/YYYY-MM-DD-*.md — otherwise leave blank.
+AI-authored PRs require a work report; see AGENTS.md.
+-->

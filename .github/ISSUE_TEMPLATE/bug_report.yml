@@ -90,7 +90,6 @@ body:
       options:
         - label: I searched existing issues and found no duplicates
           required: true
-        - label: I am running the latest version from `master`
-          required: true
+        - label: I am running the latest version from `master` (or noted my version above)
         - label: I included all relevant error messages and logs
           required: true

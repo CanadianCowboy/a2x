@@ -5,7 +5,9 @@
 > **Date:** YYYY-MM-DD  
 > **Author:** <name | agent-id>
 >
-> *Every contribution to A2X must include a completed work report. This is non-negotiable. The report creates an auditable trail of what was done, why, and how it was verified.*
+> *Work reports are **required for AI-agent contributions** and **encouraged for larger human contributions** (new features, new crates, subsystem changes). They create an auditable trail of what was done, why, and how it was verified — and become the entries in `CHANGELOG.md` at release time.*
+>
+> *For small human-authored fixes (typos, one-liners, docs), a good PR description is enough — skip this template.*
 
 ---
 

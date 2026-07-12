@@ -209,13 +209,20 @@ Full copyleft — forks, modifications, and cloud deployments all must stay open
 - **[PLAN.md](PLAN.md)** — Full 30-section design document
 - **[CHANGELOG.md](CHANGELOG.md)** — Version history
 - **[docs/](docs/)** — Protocol specifications and architecture deep-dives
-- **[CONTRIBUTING.md](CONTRIBUTING.md)** — How to contribute
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** — How humans contribute
+- **[AGENTS.md](AGENTS.md)** — Protocol for AI-agent contributors
+- **[CLA.md](CLA.md)** — Contributor License Agreement
 
 ---
 
 ## Contributing
 
-Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+Humans and AI agents are both welcome; we keep the human path short.
+
+- **Humans →** [CONTRIBUTING.md](CONTRIBUTING.md) — 5-minute read. Quick start, PR flow, CLA sign-off.
+- **AI agents (Claude, GPT, Copilot, Cursor, Aider, etc.) →** [AGENTS.md](AGENTS.md) — the working protocol and code standard.
+- **Legal step (one-time) →** [CLA.md](CLA.md). Our CLA bot handles it in one PR comment.
+- **Newcomer picks →** [good first issue](https://github.com/CanadianCowboy/a2x/labels/good%20first%20issue).
 
 ### Development
 
@@ -227,18 +234,11 @@ cargo test --workspace --lib
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 
-# Pre-commit hook
+# Pre-commit hook (optional)
 bash scripts/setup-hooks.sh
 ```
 
-### CI/CD
-
-GitHub Actions runs on every push to `master`:
-- `cargo fmt --check`
-- `cargo clippy -D warnings`
-- `cargo build`
-- `cargo test`
-- Ubuntu + Windows
+CI runs `cargo fmt --check`, `cargo clippy -D warnings`, `cargo build`, and `cargo test` on Ubuntu + Windows for every PR against `master`.
 
 ---
 
